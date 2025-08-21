@@ -16,7 +16,7 @@ export default function Labels(){
     setBoxes(bx);
     const entries:Record<string,string> = {};
     for(const b of bx){
-      const data = await makeQRDataURL(`boxlist://move/${moveId}/box/${b.id}`);
+      const data = await makeQRDataURL(`boxlister://move/${moveId}/box/${b.id}`);
       entries[b.id] = data;
     }
     setQrMap(entries);
