@@ -33,8 +33,8 @@ export default function Items(){
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Items</h1>
-        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search items..." className="input w-72" />
+        <h1 className="text-xl sm:text-2xl font-bold">Items</h1>
+        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search items..." className="input input-sm w-72" />
       </div>
 
       <div className="card p-0 overflow-hidden">
@@ -46,12 +46,14 @@ export default function Items(){
             <InlineEditable value={it.name} onSave={v=>updateItem(it.id, { name: v })} className="font-medium" />
             <Link to={`/moves/${moveId}/boxes/${it.boxId}`} className="text-brand hover:underline">{boxName(it.boxId)}</Link>
             <div className="text-sm text-neutral-500">{new Date(it.updatedAt).toLocaleString()}</div>
-            <div className="flex gap-2">
-              <button className="btn btn-ghost">Edit</button>
-              <select className="input" value={it.boxId} onChange={e=>{ moveItemToBox(it.id, e.target.value); setTimeout(refresh, 50); }}>
+            <div className="flex gap-2 items-center">
+              <button className="btn btn-ghost btn-sm">Edit</button>
+              <select className="input input-sm" value={it.boxId} onChange={e=>{ moveItemToBox(it.id, e.target.value); setTimeout(refresh, 50); }}>
                 {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-              <button className="btn btn-danger" onClick={async ()=>{ if(confirm('Delete item?')){ await deleteItem(it.id); push('Item deleted'); refresh(); } }}>Delete</button>
+              <button className="btn btn-danger btn-sm" onClick={async ()=>{ if(confirm('Delete item?')){ await deleteItem(it.id); push('Item deleted'); refresh(); } }}>
+                Delete
+              </button>
             </div>
           </div>
         ))}
