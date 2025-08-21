@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { createItem, listBoxes, listItemsInBox, moveItemToBox, updateBox, updateItem, deleteItem, useUI } from '@/store';
+import { createItem, listBoxes, listItemsInBox, moveItemToBox, updateBox, updateItem, deleteItem, useUI, reorderItems } from '@/store';
 import InlineEditable from '@/components/InlineEditable';
 import StatusSelect from '@/components/StatusSelect';
 import ImagePicker from '@/components/ImagePicker';
@@ -14,20 +14,16 @@ export default function BoxDetail(){
   const [boxes, setBoxes] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
   const nameRef = useRef<HTMLInputElement>(null);
-  const qtyRef = useRef<HTMLInputElement>(null);
-  const catRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLInputElement>(null);
   const { toasts, push } = useToasts();
+  const [draggingId, setDraggingId] = useState<string|null>(null);
 
   useEffect(()=>{ if(moveId) setCurrentMove(moveId); }, [moveId]);
 
   async function refresh(){
-    // load box
     const bx = await listBoxes(moveId!);
     setBoxes(bx);
-    const b = bx.find(x => x.id === boxId);
-    setBox(b);
-    // items
+    setBox(bx.find(x => x.id === boxId));
     setItems(await listItemsInBox(boxId!));
   }
   useEffect(()=>{ refresh(); }, [moveId, boxId]);
@@ -36,16 +32,23 @@ export default function BoxDetail(){
     e.preventDefault();
     const name = nameRef.current!.value.trim();
     if(!name) return;
-    const qty = parseInt(qtyRef.current!.value || '1', 10) || 1;
-    const category = catRef.current!.value.trim();
     const notes = notesRef.current!.value.trim();
-    await createItem(moveId!, boxId!, { name, quantity: qty, category, notes });
+    await createItem(moveId!, boxId!, { name, notes });
     push('Item added');
     nameRef.current!.value = '';
-    qtyRef.current!.value = '1';
-    catRef.current!.value = '';
     notesRef.current!.value = '';
     nameRef.current!.focus();
+    refresh();
+  }
+
+  async function handleDrop(targetId: string){
+    if(!draggingId || draggingId===targetId) return;
+    const ids = items.map((it:any)=> it.id);
+    const from = ids.indexOf(draggingId);
+    const to = ids.indexOf(targetId);
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    await reorderItems(ids);
+    setDraggingId(null);
     refresh();
   }
 
@@ -62,8 +65,6 @@ export default function BoxDetail(){
         <div className="card p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <InlineEditable value={box.name} onSave={v=>updateBox(box.id, { name: v })} className="text-xl font-semibold" />
-            <span className="text-neutral-500">Room:</span>
-            <InlineEditable value={box.room || ''} onSave={v=>updateBox(box.id, { room: v })} placeholder="(none)" />
           </div>
           <StatusSelect value={box.status} onChange={(v)=>updateBox(box.id, { status: v })} />
 
@@ -83,7 +84,7 @@ export default function BoxDetail(){
               <div className="text-sm text-neutral-500">No images yet.</div>
             )}
             <div className="mt-2">
-              <ImagePicker multiple onPick={async (urls)=>{ const imgs = [...(box.images||[]), ...urls]; await updateBox(box.id, { images: imgs }); push('Images added'); refresh(); }} />
+              <ImagePicker onSave={async (url)=>{ const imgs = [...(box.images||[]), url]; await updateBox(box.id, { images: imgs }); push('Image saved'); refresh(); }} />
             </div>
           </div>
         </div>
@@ -91,19 +92,11 @@ export default function BoxDetail(){
 
       <div className="card p-4">
         <form onSubmit={addItem} className="flex flex-wrap items-end gap-2">
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[220px]">
             <label className="text-sm text-neutral-600">Item name</label>
             <input ref={nameRef} className="input" placeholder="e.g., Plates" autoFocus />
           </div>
-          <div className="w-28">
-            <label className="text-sm text-neutral-600">Qty</label>
-            <input ref={qtyRef} className="input" defaultValue="1" type="number" min="1" />
-          </div>
-          <div className="w-48">
-            <label className="text-sm text-neutral-600">Category (optional)</label>
-            <input ref={catRef} className="input" placeholder="Kitchenware" />
-          </div>
-          <div className="flex-1 min-w-[200px]">
+          <div className="flex-1 min-w-[220px]">
             <label className="text-sm text-neutral-600">Notes (optional)</label>
             <input ref={notesRef} className="input" placeholder="Glass / fragile" />
           </div>
@@ -112,15 +105,18 @@ export default function BoxDetail(){
 
         <div className="mt-4 divide-y">
           {items.map(it => (
-            <div key={it.id} className="py-3 flex items-center gap-3">
+            <div key={it.id} className="py-3 flex items-center gap-3"
+              draggable
+              onDragStart={()=>setDraggingId(it.id)}
+              onDragOver={(e)=>e.preventDefault()}
+              onDrop={()=>handleDrop(it.id)}>
+              <span className="cursor-grab select-none">☰</span>
               <InlineEditable value={it.name} onSave={v=>updateItem(it.id, { name: v })} className="flex-1 font-medium" />
-              <input className="input w-20" type="number" min="1" value={it.quantity}
-                onChange={e=>updateItem(it.id, { quantity: parseInt(e.target.value||'1',10)||1 })} />
-              <InlineEditable value={it.category || ''} onSave={v=>updateItem(it.id, { category: v })} placeholder="Category" className="w-40" />
               <InlineEditable value={it.notes || ''} onSave={v=>updateItem(it.id, { notes: v })} placeholder="Notes" className="flex-1" />
               <select className="input w-40" value={it.boxId} onChange={e=>{ moveItemToBox(it.id, e.target.value); setTimeout(refresh, 50); }}>
                 {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
+              <button className="btn btn-ghost">Edit</button>
               <button className="btn btn-danger" onClick={async ()=>{ if(confirm('Delete item?')){ await deleteItem(it.id); push('Item deleted'); refresh(); } }}>Delete</button>
             </div>
           ))}
