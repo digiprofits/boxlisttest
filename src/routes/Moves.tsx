@@ -69,7 +69,7 @@ export default function Moves(){
 
       <Modal open={open} onClose={()=>setOpen(false)} title="New Move">
         <form onSubmit={(e)=>{ e.preventDefault(); const v=nameRef.current!.value.trim(); if(v){ setOpen(false); makeMove(v); }}}>
-          <input ref={nameRef} autoFocus placeholder="Move name (e.g., Brisbane to Sydney)" className="input"/>
+          <input ref={nameRef} placeholder="Move name (e.g., Brisbane to Sydney)" className="input"/>
           <div className="mt-4 flex justify-end gap-2">
             <button type="button" className="btn btn-ghost" onClick={()=>setOpen(false)}>Cancel</button>
             <button type="submit" className="btn btn-primary">Create & Open</button>
