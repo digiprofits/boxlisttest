@@ -4,6 +4,10 @@ import { useParams, Link } from 'react-router-dom';
 import InlineEditable from '@/components/InlineEditable';
 import Toasts, { useToasts } from '@/components/Toasts';
 
+function shortWhen(ts:number){
+  return new Date(ts).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+
 export default function Items(){
   const { moveId } = useParams();
   const { setCurrentMove } = useUI();
@@ -37,15 +41,16 @@ export default function Items(){
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search items..." className="input input-sm w-72" />
       </div>
 
-      <div className="card p-0 overflow-hidden">
-        <div className="grid grid-cols-[2fr_1fr_1fr_160px] gap-3 px-4 py-2 text-sm text-neutral-600 border-b">
+      {/* Desktop / tablet table */}
+      <div className="card p-0 overflow-hidden hidden sm:block">
+        <div className="grid grid-cols-[2fr_1fr_1fr_120px] gap-3 px-4 py-2 text-sm text-neutral-600 border-b">
           <div>Item</div><div>Box</div><div>Updated</div><div>Actions</div>
         </div>
         {filtered.map(it => (
-          <div key={it.id} className="grid grid-cols-[2fr_1fr_1fr_160px] gap-3 px-4 py-3 border-b items-center">
+          <div key={it.id} className="grid grid-cols-[2fr_1fr_1fr_120px] gap-3 px-4 py-3 border-b items-center">
             <InlineEditable value={it.name} onSave={v=>updateItem(it.id, { name: v })} className="font-medium" />
             <Link to={`/moves/${moveId}/boxes/${it.boxId}`} className="text-brand hover:underline">{boxName(it.boxId)}</Link>
-            <div className="text-sm text-neutral-500">{new Date(it.updatedAt).toLocaleString()}</div>
+            <div className="text-sm text-neutral-500">{shortWhen(it.updatedAt)}</div>
             <div className="flex gap-2 items-center">
               <button className="btn btn-ghost btn-sm">Edit</button>
               <select className="input input-sm" value={it.boxId} onChange={e=>{ moveItemToBox(it.id, e.target.value); setTimeout(refresh, 50); }}>
@@ -60,6 +65,34 @@ export default function Items(){
         {filtered.length === 0 && (
           <div className="p-6 text-center text-neutral-500">No items match your search.</div>
         )}
+      </div>
+
+      {/* Mobile cards */}
+      <div className="sm:hidden grid gap-2">
+        {filtered.map(it => (
+          <div key={it.id} className="card p-3">
+            <div className="flex items-start justify-between gap-2">
+              <InlineEditable value={it.name} onSave={v=>updateItem(it.id, { name: v })} className="font-medium text-base" />
+              <span className="badge badge-sm border-neutral-300">{shortWhen(it.updatedAt)}</span>
+            </div>
+            {it.notes && <div className="text-sm text-neutral-600 mt-1">{it.notes}</div>}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="text-sm">
+                Box:&nbsp;
+                <Link to={`/moves/${moveId}/boxes/${it.boxId}`} className="text-brand underline">{boxName(it.boxId)}</Link>
+              </div>
+              <select className="input input-sm w-40" value={it.boxId} onChange={e=>{ moveItemToBox(it.id, e.target.value); setTimeout(refresh, 50); }}>
+                {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+              <button className="btn btn-ghost btn-sm">Edit</button>
+              <button className="btn btn-danger btn-sm" onClick={async ()=>{ if(confirm('Delete item?')){ await deleteItem(it.id); push('Item deleted'); refresh(); } }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+        {filtered.length === 0 && <div className="text-center text-neutral-500">No items match your search.</div>}
       </div>
 
       <Toasts toasts={toasts} />
