@@ -41,3 +41,14 @@
     break-inside: avoid;
   }
 }
+/* --- compact UI helpers --- */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.btn-sm { @apply px-3 py-1.5 text-sm rounded-lg; }
+.input-sm { @apply px-2.5 py-1.5 text-sm rounded-lg; }
+.badge-sm { @apply text-xs px-2 py-0.5 rounded-full; }
+
+/* Tabs (top nav) */
+.tab { @apply px-3 py-2 rounded-xl text-sm font-medium hover:bg-neutral-100 whitespace-nowrap transition; }
+.tab-active { @apply bg-neutral-900 text-white; }
