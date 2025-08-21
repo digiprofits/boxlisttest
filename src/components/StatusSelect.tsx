@@ -9,15 +9,11 @@ const options: {value:BoxStatus; label:string}[] = [
 
 export default function StatusSelect({ value, onChange }:{ value:BoxStatus; onChange:(v:BoxStatus)=>void }){
   return (
-    <div className="flex flex-wrap gap-2">
-      {options.map(o => (
-        <button key={o.value}
-          type="button"
-          onClick={()=>onChange(o.value)}
-          className={`px-3 py-1 rounded-full border ${o.value===value ? 'bg-brand text-white border-brand' : 'bg-white hover:bg-neutral-100'}`}>
-          {o.label}
-        </button>
-      ))}
-    </div>
+    <label className="block">
+      <span className="text-sm text-neutral-600">Status</span>
+      <select value={value} onChange={e=>onChange(e.target.value as BoxStatus)} className="input mt-1">
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </label>
   );
 }
