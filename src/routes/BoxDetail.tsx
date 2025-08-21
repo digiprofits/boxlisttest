@@ -96,7 +96,7 @@ export default function BoxDetail(){
             <label className="text-sm text-neutral-600">Item name</label>
             <input ref={nameRef} className="input input-sm" placeholder="e.g., Plates" />
           </div>
-        <div className="flex-1 min-w-[220px]">
+          <div className="flex-1 min-w-[220px]">
             <label className="text-sm text-neutral-600">Notes (optional)</label>
             <input ref={notesRef} className="input input-sm" placeholder="Glass / fragile" />
           </div>
