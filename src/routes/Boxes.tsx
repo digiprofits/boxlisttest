@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { createBox, listBoxes, listItemsInBox, updateBox, deleteBox, useUI } from '@/store';
 import InlineEditable from '@/components/InlineEditable';
@@ -13,7 +13,6 @@ export default function Boxes(){
   const [boxes, setBoxes] = useState<any[]>([]);
   const [stats, setStats] = useState<Record<string, number>>({});
   const nameRef = useRef<HTMLInputElement>(null);
-  const roomRef = useRef<HTMLInputElement>(null);
   const { toasts, push } = useToasts();
 
   useEffect(()=>{ if(moveId) setCurrentMove(moveId); }, [moveId]);
@@ -22,12 +21,8 @@ export default function Boxes(){
     if(!moveId) return;
     const bx = await listBoxes(moveId);
     setBoxes(bx);
-    // Compute item counts
     const counts: Record<string, number> = {};
-    await Promise.all(bx.map(async b => {
-      const items = await listItemsInBox(b.id);
-      counts[b.id] = items.length;
-    }));
+    await Promise.all(bx.map(async b => { counts[b.id] = (await listItemsInBox(b.id)).length; }));
     setStats(counts);
   }
   useEffect(()=>{ refresh(); }, [moveId]);
@@ -36,26 +31,25 @@ export default function Boxes(){
     e.preventDefault();
     if(!moveId) return;
     const name = nameRef.current!.value.trim();
-    const room = roomRef.current!.value.trim();
     if(!name) return;
-    await createBox(moveId, { name, room, status: 'open' });
+    const newBox = await createBox(moveId, { name, status: 'open' });
     nameRef.current!.value = '';
-    roomRef.current!.value = '';
     push('Box added');
-    refresh();
-    nameRef.current!.focus();
+    nav(`/moves/${moveId}/boxes/${newBox.id}`); // auto-open new box
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Boxes</h1>
-        <button className="btn btn-ghost" onClick={()=> nav(`/moves/${moveId}/settings`)}>Move Settings</button>
+        <div className="flex gap-2">
+          <button className="btn btn-ghost" onClick={()=> nav(`/moves/${moveId}/labels`)}>Print Labels</button>
+          <button className="btn btn-ghost" onClick={()=> nav(`/moves/${moveId}/settings`)}>Settings</button>
+        </div>
       </div>
 
       <form onSubmit={quickAdd} className="card p-4 flex flex-col sm:flex-row gap-3">
         <input ref={nameRef} className="input" placeholder="Box name (e.g., Kitchen #1)" autoFocus />
-        <input ref={roomRef} className="input" placeholder="Room (e.g., Kitchen)" />
         <button className="btn btn-primary" type="submit">Add Box (Enter)</button>
       </form>
 
@@ -65,9 +59,6 @@ export default function Boxes(){
             <div className="flex items-start justify-between gap-2">
               <InlineEditable value={b.name} onSave={v=>updateBox(b.id, { name: v })} className="text-lg font-semibold" />
               <span className="badge border-neutral-300">Items: {stats[b.id] ?? 0}</span>
-            </div>
-            <div className="mt-1 text-sm text-neutral-500">
-              Room: <InlineEditable value={b.room || ''} onSave={v=>updateBox(b.id, { room: v })} placeholder="(none)" />
             </div>
             <div className="mt-2">
               <StatusSelect value={b.status} onChange={(v)=>updateBox(b.id, { status: v })} />
@@ -82,8 +73,8 @@ export default function Boxes(){
               <div className="mt-3 text-sm text-neutral-500">No images yet.</div>
             )}
             <div className="mt-3 flex gap-2">
-              <ImagePicker multiple onPick={async (urls)=>{ const imgs = [...(b.images||[]), ...urls]; await updateBox(b.id, { images: imgs }); push('Images added'); refresh(); }} />
               <button className="btn btn-ghost" onClick={()=> nav(`/moves/${moveId}/boxes/${b.id}`)}>Add / View Items</button>
+              <ImagePicker onSave={async (url)=>{ const imgs = [...(b.images||[]), url]; await updateBox(b.id, { images: imgs }); push('Image saved'); refresh(); }} />
               <button className="btn btn-danger ml-auto" onClick={async ()=>{ if(confirm('Delete this box and its items?')){ await deleteBox(b.id); push('Box deleted'); refresh(); } }}>Delete</button>
             </div>
           </div>
