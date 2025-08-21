@@ -1,7 +1,8 @@
 {
-  "name": "box-it-up",
+  "name": "boxlister",
   "version": "2.0.0",
   "private": true,
+  "description": "BoxLister – track boxes and items for moving house.",
   "type": "module",
   "scripts": {
     "dev": "vite",
