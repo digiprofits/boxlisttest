@@ -33,7 +33,7 @@ export default function Settings(){
     reader.onload=async()=>{ try{
       await importJSON(JSON.parse(String(reader.result)));
       alert('Import complete. Reload to see changes.');
-    }catch(e){ alert('Import failed: '+(e as Error).message); } };
+    }catch(err){ alert('Import failed: '+(err as Error).message); } };
     reader.readAsText(file);
   }
 
@@ -44,20 +44,34 @@ export default function Settings(){
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Settings & Data</h1>
+      <h1 className="text-xl sm:text-2xl font-bold">Settings &amp; Data</h1>
 
-      <div className="card p-4 space-y-3">
+      <div className="card p-4 space-y-4">
         <div className="font-medium">Data Export / Import</div>
-        <div className="flex gap-2">
-          <button className="btn btn-primary" onClick={doExportJSON}>Export JSON (Full Backup)</button>
-          <label className="btn btn-ghost cursor-pointer">
+
+        {/* Responsive action grid: 2 columns on phones, 4 on larger screens */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <button className="btn btn-primary w-full" onClick={doExportJSON}>
+            Export JSON<br className="hidden sm:block" />(Full Backup)
+          </button>
+
+          <label className="btn btn-ghost w-full cursor-pointer text-center">
             Import JSON
             <input type="file" className="hidden" accept="application/json" onChange={handleImportJSON}/>
           </label>
-          <button className="btn btn-ghost" onClick={doExportCSV}>Export CSV (Inventory)</button>
-          <button className="btn btn-ghost" onClick={()=>nav(`/moves/${moveId}/labels`)}>Open Printable Labels</button>
+
+          <button className="btn btn-ghost w-full" onClick={doExportCSV}>
+            Export CSV<br className="hidden sm:block" />(Inventory)
+          </button>
+
+          <button className="btn btn-ghost w-full" onClick={()=>nav(`/moves/${moveId}/labels`)}>
+            Printable Labels
+          </button>
         </div>
-        <p className="text-sm text-neutral-600">JSON includes all moves, boxes, and items. CSV is a flat inventory list.</p>
+
+        <p className="text-sm text-neutral-600">
+          JSON includes all moves, boxes, and items. CSV is a flat inventory list.
+        </p>
       </div>
     </div>
   );
