@@ -1,6 +1,5 @@
 import { Link, NavLink } from 'react-router-dom';
 import { useUI } from '@/store';
-import InstallPrompt from '@/components/InstallPrompt';
 
 function Tab({ to, children }:{ to:string; children:React.ReactNode }) {
   return (
@@ -36,9 +35,6 @@ export default function TopBar(){
             )}
           </div>
         </nav>
-
-        {/* Optional install button if you kept it */}
-        <InstallPrompt />
       </div>
     </header>
   );
