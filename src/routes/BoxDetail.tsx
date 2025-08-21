@@ -6,17 +6,23 @@ import StatusSelect from '@/components/StatusSelect';
 import ImagePicker from '@/components/ImagePicker';
 import Toasts, { useToasts } from '@/components/Toasts';
 
+type EditDraft = { id:string; name:string; notes:string; boxId:string };
+
 export default function BoxDetail(){
   const { moveId, boxId } = useParams();
   const nav = useNavigate();
   const { setCurrentMove } = useUI();
+
   const [box, setBox] = useState<any>(null);
   const [boxes, setBoxes] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+
   const nameRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLInputElement>(null);
   const { toasts, push } = useToasts();
+
   const [draggingId, setDraggingId] = useState<string|null>(null);
+  const [editing, setEditing] = useState<EditDraft|null>(null);
 
   useEffect(()=>{ if(moveId) setCurrentMove(moveId); }, [moveId]);
 
@@ -49,6 +55,28 @@ export default function BoxDetail(){
     await reorderItems(ids);
     setDraggingId(null);
     refresh();
+  }
+
+  function startEdit(it:any){
+    setEditing({ id: it.id, name: it.name, notes: it.notes || '', boxId: it.boxId });
+  }
+  function cancelEdit(){ setEditing(null); }
+
+  async function saveEdit(){
+    if(!editing) return;
+    await updateItem(editing.id, { name: editing.name.trim(), notes: editing.notes.trim() });
+    await moveItemToBox(editing.id, editing.boxId);
+    push('Item updated');
+    setEditing(null);
+    refresh();
+  }
+
+  async function removeItem(id:string){
+    if(confirm('Delete item?')){
+      await deleteItem(id);
+      push('Item deleted');
+      refresh();
+    }
   }
 
   return (
@@ -103,23 +131,66 @@ export default function BoxDetail(){
           <button className="btn btn-primary btn-sm">Add Item (Enter)</button>
         </form>
 
+        {/* Items list */}
         <div className="mt-4 divide-y">
           {items.map(it => (
-            <div key={it.id} className="py-3 flex items-center gap-3"
-              draggable
-              onDragStart={()=>setDraggingId(it.id)}
-              onDragOver={(e)=>e.preventDefault()}
-              onDrop={()=>handleDrop(it.id)}>
-              <span className="cursor-grab select-none">☰</span>
-              <InlineEditable value={it.name} onSave={v=>updateItem(it.id, { name: v })} className="flex-1 font-medium" />
-              <InlineEditable value={it.notes || ''} onSave={v=>updateItem(it.id, { notes: v })} placeholder="Notes" className="flex-1" />
-              <select className="input input-sm w-36" value={it.boxId} onChange={e=>{ moveItemToBox(it.id, e.target.value); setTimeout(refresh, 50); }}>
-                {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
-              </select>
-              <button className="btn btn-ghost btn-sm">Edit</button>
-              <button className="btn btn-danger btn-sm" onClick={async ()=>{ if(confirm('Delete item?')){ await deleteItem(it.id); push('Item deleted'); refresh(); } }}>
-                Delete
-              </button>
+            <div key={it.id} className="py-3">
+              {/* Row */}
+              <div
+                className="flex items-center gap-3"
+                draggable
+                onDragStart={()=>setDraggingId(it.id)}
+                onDragOver={(e)=>e.preventDefault()}
+                onDrop={()=>handleDrop(it.id)}
+              >
+                <span className="cursor-grab select-none">☰</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{it.name}</div>
+                  {it.notes && <div className="text-sm text-neutral-600 truncate">{it.notes}</div>}
+                </div>
+                <button className="btn btn-ghost btn-sm" onClick={()=>startEdit(it)}>Edit</button>
+                <button className="btn btn-danger btn-sm" onClick={()=>removeItem(it.id)}>Delete</button>
+              </div>
+
+              {/* Inline editor */}
+              {editing?.id === it.id && (
+                <div className="mt-3 rounded-xl border p-3 bg-neutral-50">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-sm">
+                      <span className="text-neutral-600">Name</span>
+                      <input
+                        className="input input-sm mt-1"
+                        value={editing.name}
+                        onChange={e=>setEditing({...editing, name: e.target.value})}
+                      />
+                    </label>
+                    <label className="block text-sm">
+                      <span className="text-neutral-600">Box</span>
+                      <select
+                        className="input input-sm mt-1"
+                        value={editing.boxId}
+                        onChange={e=>setEditing({...editing, boxId: e.target.value})}
+                      >
+                        {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
+                      </select>
+                    </label>
+                    <label className="block text-sm sm:col-span-2">
+                      <span className="text-neutral-600">Notes</span>
+                      <input
+                        className="input input-sm mt-1"
+                        value={editing.notes}
+                        onChange={e=>setEditing({...editing, notes: e.target.value})}
+                        placeholder="Notes (optional)"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
+                    <button className="btn btn-primary btn-sm" onClick={saveEdit}>Save</button>
+                    <button className="btn btn-danger btn-sm" onClick={()=>removeItem(it.id)}>Delete</button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
           {items.length === 0 && (
