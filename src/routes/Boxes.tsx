@@ -5,7 +5,7 @@ import StatusSelect from '@/components/StatusSelect';
 import ImagePicker from '@/components/ImagePicker';
 import Toasts, { useToasts } from '@/components/Toasts';
 
-export default function Boxes(){
+export default function Boxes() {
   const { moveId } = useParams();
   const nav = useNavigate();
   const { setCurrentMove } = useUI();
@@ -14,27 +14,38 @@ export default function Boxes(){
   const nameRef = useRef<HTMLInputElement>(null);
   const { toasts, push } = useToasts();
 
-  useEffect(()=>{ if(moveId) setCurrentMove(moveId); }, [moveId]);
+  useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
 
-  async function refresh(){
-    if(!moveId) return;
+  async function refresh() {
+    if (!moveId) return;
     const bx = await listBoxes(moveId);
     setBoxes(bx);
     const counts: Record<string, number> = {};
-    await Promise.all(bx.map(async b => { counts[b.id] = (await listItemsInBox(b.id)).length; }));
+    await Promise.all(
+      bx.map(async (b) => {
+        counts[b.id] = (await listItemsInBox(b.id)).length;
+      })
+    );
     setStats(counts);
   }
-  useEffect(()=>{ refresh(); }, [moveId]);
+  useEffect(() => { refresh(); }, [moveId]);
 
-  async function quickAdd(e: React.FormEvent<HTMLFormElement>){
+  async function quickAdd(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if(!moveId) return;
+    if (!moveId) return;
     const name = nameRef.current!.value.trim();
-    if(!name) return;
+    if (!name) return;
     const newBox = await createBox(moveId, { name, status: 'open' });
     nameRef.current!.value = '';
     push('Box added');
     nav(`/moves/${moveId}/boxes/${newBox.id}`); // auto-open new box
+  }
+
+  // ✅ Update local state immediately when status changes in the list
+  async function changeStatus(boxId: string, next: any) {
+    await updateBox(boxId, { status: next });
+    setBoxes((prev) => prev.map((b) => (b.id === boxId ? { ...b, status: next } : b)));
+    push('Status updated');
   }
 
   return (
@@ -42,8 +53,8 @@ export default function Boxes(){
       <div className="flex items-center justify-between">
         <h1 className="text-xl sm:text-2xl font-bold">Boxes</h1>
         <div className="flex gap-2">
-          <button className="btn btn-ghost btn-sm" onClick={()=> nav(`/moves/${moveId}/labels`)}>Print Labels</button>
-          <button className="btn btn-ghost btn-sm" onClick={()=> nav(`/moves/${moveId}/settings`)}>Settings</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => nav(`/moves/${moveId}/labels`)}>Print Labels</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => nav(`/moves/${moveId}/settings`)}>Settings</button>
         </div>
       </div>
 
@@ -54,9 +65,9 @@ export default function Boxes(){
 
       {/* Compact list */}
       <div className="card p-0 overflow-hidden">
-        {boxes.map((b, idx)=>(
-          <div key={b.id} className={`px-3 sm:px-4 py-3 flex items-center gap-3 ${idx!==boxes.length-1?'border-b':''}`}>
-            {/* Left: box name & count */}
+        {boxes.map((b, idx) => (
+          <div key={b.id} className={`px-3 sm:px-4 py-3 flex items-center gap-3 ${idx !== boxes.length - 1 ? 'border-b' : ''}`}>
+            {/* Left: name + count */}
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
                 <Link to={`/moves/${moveId}/boxes/${b.id}`} className="font-semibold truncate hover:underline">
@@ -66,22 +77,22 @@ export default function Boxes(){
               </div>
             </div>
 
-            {/* Middle: compact status */}
+            {/* Middle: compact status (shown on ≥sm screens) */}
             <div className="hidden sm:block w-40 shrink-0">
-              <StatusSelect compact value={b.status} onChange={(v)=>updateBox(b.id,{ status: v })} />
+              <StatusSelect compact value={b.status} onChange={(v) => changeStatus(b.id, v)} />
             </div>
 
             {/* Right: tiny actions */}
             <div className="flex items-center gap-2 shrink-0">
-              {/* Add/View Items (open box) */}
+              {/* Open / Add items */}
               <button
                 className="btn-icon btn-ghost"
                 title="Open / Add Items"
                 aria-label="Open / Add Items"
-                onClick={()=> nav(`/moves/${moveId}/boxes/${b.id}`)}
+                onClick={() => nav(`/moves/${moveId}/boxes/${b.id}`)}
               >
                 <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M3 6h18M3 12h18M3 18h18"/>
+                  <path d="M3 6h18M3 12h18M3 18h18" />
                 </svg>
               </button>
 
@@ -89,7 +100,12 @@ export default function Boxes(){
               <ImagePicker
                 variant="icon"
                 label="Add Image"
-                onSave={async (url)=>{ const imgs=[...(b.images||[]), url]; await updateBox(b.id,{ images: imgs }); push('Image saved'); refresh(); }}
+                onSave={async (url) => {
+                  const imgs = [...(b.images || []), url];
+                  await updateBox(b.id, { images: imgs });
+                  push('Image saved');
+                  refresh();
+                }}
               />
 
               {/* Delete */}
@@ -97,16 +113,25 @@ export default function Boxes(){
                 className="btn-icon btn-danger"
                 title="Delete Box"
                 aria-label="Delete Box"
-                onClick={async ()=>{ if(confirm('Delete this box and its items?')){ await deleteBox(b.id); push('Box deleted'); refresh(); } }}
+                onClick={async () => {
+                  if (confirm('Delete this box and its items?')) {
+                    await deleteBox(b.id);
+                    push('Box deleted');
+                    refresh();
+                  }
+                }}
               >
                 <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <line x1="10" y1="11" x2="10" y2="17" />
+                  <line x1="14" y1="11" x2="14" y2="17" />
                 </svg>
               </button>
             </div>
           </div>
         ))}
-        {boxes.length===0 && <div className="p-6 text-center text-neutral-500">No boxes yet. Add one above.</div>}
+        {boxes.length === 0 && <div className="p-6 text-center text-neutral-500">No boxes yet. Add one above.</div>}
       </div>
 
       <Toasts toasts={toasts} />
