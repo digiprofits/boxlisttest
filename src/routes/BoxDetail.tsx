@@ -37,7 +37,6 @@ export default function BoxDetail(){
     push('Item added');
     nameRef.current!.value = '';
     notesRef.current!.value = '';
-    nameRef.current!.focus();
     refresh();
   }
 
@@ -56,16 +55,17 @@ export default function BoxDetail(){
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Link to={`/moves/${moveId}/boxes`} className="btn btn-ghost">← Back</Link>
-          <h1 className="text-2xl font-bold">Box</h1>
+          <Link to={`/moves/${moveId}/boxes`} className="btn btn-ghost btn-sm">← Back</Link>
+          <h1 className="text-xl sm:text-2xl font-bold">Box</h1>
         </div>
       </div>
 
       {box && (
-        <div className="card p-4 space-y-3">
+        <div className="card p-3 sm:p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-3">
             <InlineEditable value={box.name} onSave={v=>updateBox(box.id, { name: v })} className="text-xl font-semibold" />
           </div>
+
           <StatusSelect value={box.status} onChange={(v)=>updateBox(box.id, { status: v })} />
 
           <div className="mt-2">
@@ -90,17 +90,17 @@ export default function BoxDetail(){
         </div>
       )}
 
-      <div className="card p-4">
+      <div className="card p-3 sm:p-4">
         <form onSubmit={addItem} className="flex flex-wrap items-end gap-2">
           <div className="flex-1 min-w-[220px]">
             <label className="text-sm text-neutral-600">Item name</label>
-            <input ref={nameRef} className="input" placeholder="e.g., Plates" autoFocus />
+            <input ref={nameRef} className="input input-sm" placeholder="e.g., Plates" />
           </div>
-          <div className="flex-1 min-w-[220px]">
+        <div className="flex-1 min-w-[220px]">
             <label className="text-sm text-neutral-600">Notes (optional)</label>
-            <input ref={notesRef} className="input" placeholder="Glass / fragile" />
+            <input ref={notesRef} className="input input-sm" placeholder="Glass / fragile" />
           </div>
-          <button className="btn btn-primary">Add Item (Enter)</button>
+          <button className="btn btn-primary btn-sm">Add Item (Enter)</button>
         </form>
 
         <div className="mt-4 divide-y">
@@ -113,11 +113,13 @@ export default function BoxDetail(){
               <span className="cursor-grab select-none">☰</span>
               <InlineEditable value={it.name} onSave={v=>updateItem(it.id, { name: v })} className="flex-1 font-medium" />
               <InlineEditable value={it.notes || ''} onSave={v=>updateItem(it.id, { notes: v })} placeholder="Notes" className="flex-1" />
-              <select className="input w-40" value={it.boxId} onChange={e=>{ moveItemToBox(it.id, e.target.value); setTimeout(refresh, 50); }}>
+              <select className="input input-sm w-36" value={it.boxId} onChange={e=>{ moveItemToBox(it.id, e.target.value); setTimeout(refresh, 50); }}>
                 {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-              <button className="btn btn-ghost">Edit</button>
-              <button className="btn btn-danger" onClick={async ()=>{ if(confirm('Delete item?')){ await deleteItem(it.id); push('Item deleted'); refresh(); } }}>Delete</button>
+              <button className="btn btn-ghost btn-sm">Edit</button>
+              <button className="btn btn-danger btn-sm" onClick={async ()=>{ if(confirm('Delete item?')){ await deleteItem(it.id); push('Item deleted'); refresh(); } }}>
+                Delete
+              </button>
             </div>
           ))}
           {items.length === 0 && (
