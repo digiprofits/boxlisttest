@@ -30,7 +30,7 @@ export default function Moves(){
           <h1 className="text-2xl font-bold">Your Moves</h1>
           {moves.length===0 && (
             <div className="mt-2">
-              <div className="text-xl font-semibold">Welcome to BoxList</div>
+              <div className="text-xl font-semibold">Welcome to BoxLister</div>
               <p className="text-neutral-600">
                 Start by creating your first move. You can add boxes, items, images, and print labels with QR codes.
               </p>
