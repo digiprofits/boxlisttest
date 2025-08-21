@@ -24,7 +24,7 @@ export default function Settings(){
 
   async function doExportJSON(){
     const data=await exportJSON();
-    download('boxlist-backup.json', JSON.stringify(data,null,2));
+    download('boxlister-backup.json', JSON.stringify(data,null,2));
   }
 
   function handleImportJSON(e:React.ChangeEvent<HTMLInputElement>){
@@ -39,7 +39,7 @@ export default function Settings(){
 
   function doExportCSV(){
     const csv=itemsToCSV(moves,boxes,items);
-    download('boxlist-inventory.csv', csv, 'text/csv');
+    download('boxlister-inventory.csv', csv, 'text/csv');
   }
 
   return (
@@ -49,7 +49,6 @@ export default function Settings(){
       <div className="card p-4 space-y-4">
         <div className="font-medium">Data Export / Import</div>
 
-        {/* Responsive action grid: 2 columns on phones, 4 on larger screens */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <button className="btn btn-primary w-full" onClick={doExportJSON}>
             Export JSON<br className="hidden sm:block" />(Full Backup)
