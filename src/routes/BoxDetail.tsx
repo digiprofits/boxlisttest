@@ -20,7 +20,7 @@ export default function BoxDetail(){
   const [box, setBox] = useState<any>(null);
   const [boxes, setBoxes] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
-  const [viewer, setViewer] = useState<string|null>(null); // full-size image viewer
+  const [viewer, setViewer] = useState<string|null>(null);
 
   const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -49,7 +49,7 @@ export default function BoxDetail(){
     push('Item added');
     nameRef.current!.value = '';
     notesRef.current!.value = '';
-    nameRef.current?.focus();               // ← refocus for rapid entry
+    nameRef.current?.focus();   // quick entry loop
     refresh();
   }
 
@@ -84,7 +84,6 @@ export default function BoxDetail(){
     }
   }
 
-  // Status updates local state immediately
   async function onStatusChange(next:any){
     if(!box) return;
     await updateBox(box.id, { status: next });
@@ -104,7 +103,6 @@ export default function BoxDetail(){
       {box && (
         <div className="card p-3 sm:p-4 space-y-3">
           <InlineEditable value={box.name} onSave={v=>updateBox(box.id, { name: v })} className="text-xl font-semibold" />
-
           <StatusSelect value={box.status} onChange={onStatusChange} />
 
           <div className="mt-2">
@@ -117,11 +115,11 @@ export default function BoxDetail(){
                       src={src}
                       alt=""
                       className="h-24 w-full object-cover rounded-xl border cursor-zoom-in"
-                      onClick={()=>setViewer(src)}                /* ← open full-size */
+                      onClick={()=>setViewer(src)}
                     />
                     <button
                       className="absolute top-1 right-1 bg-white/90 rounded-lg px-2 py-1 text-xs"
-                      onClick={async (e)=>{                        /* prevent opening viewer */
+                      onClick={async (e)=>{
                         e.stopPropagation();
                         const imgs = box.images.filter((_:any, idx:number)=> idx!==i);
                         await updateBox(box.id, { images: imgs });
@@ -149,17 +147,30 @@ export default function BoxDetail(){
               ref={nameRef}
               className="input input-sm"
               placeholder="e.g., Plates"
-              onKeyDown={(e)=>{ if(e.key==='Enter'){ e.preventDefault(); formRef.current?.requestSubmit(); }}} /* ← Enter submits, no jump */
+              enterKeyHint="done"
+              onKeyDown={(e)=>{
+                if(e.key==='Enter'){ e.preventDefault(); formRef.current?.requestSubmit(); }
+              }}
+              onKeyUp={(e)=>{
+                if(e.key==='Enter'){ e.preventDefault(); }
+              }}
             />
           </div>
           <div className="flex-1 min-w-[220px]">
             <label className="text-sm text-neutral-600">Notes (optional)</label>
-            <input ref={notesRef} className="input input-sm" placeholder="Glass / fragile" />
+            <input
+              ref={notesRef}
+              className="input input-sm"
+              placeholder="Glass / fragile"
+              enterKeyHint="done"
+              onKeyDown={(e)=>{
+                if(e.key==='Enter'){ e.preventDefault(); formRef.current?.requestSubmit(); }
+              }}
+            />
           </div>
-          <button className="btn btn-primary btn-sm">Add Item (Enter)</button>
+          <button className="btn btn-primary btn-sm" type="submit">Add Item (Enter)</button>
         </form>
 
-        {/* Items list */}
         <div className="mt-4 divide-y">
           {items.map(it => (
             <div key={it.id} className="py-3">
@@ -225,7 +236,6 @@ export default function BoxDetail(){
         </div>
       </div>
 
-      {/* Full-size image viewer */}
       <Modal open={!!viewer} onClose={()=>setViewer(null)} title="Image">
         {viewer && <img src={viewer} alt="Full size" className="max-h-[75vh] w-full object-contain rounded-xl border" />}
       </Modal>
