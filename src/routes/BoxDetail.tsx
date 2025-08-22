@@ -1,24 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  createItem,
-  listBoxes,
-  listItemsInBox,
-  moveItemToBox,
-  updateBox,
-  updateItem,
-  deleteItem,
-  useUI,
-  reorderItems
+  createItem, listBoxes, listItemsInBox, moveItemToBox,
+  updateBox, updateItem, deleteItem, useUI, reorderItems
 } from '@/store';
 import InlineEditable from '@/components/InlineEditable';
 import StatusSelect from '@/components/StatusSelect';
 import ImagePicker from '@/components/ImagePicker';
+import Modal from '@/components/Modal';
 import Toasts, { useToasts } from '@/components/Toasts';
 
 type EditDraft = { id: string; name: string; notes: string; boxId: string };
 
-export default function BoxDetail() {
+export default function BoxDetail(){
   const { moveId, boxId } = useParams();
   const nav = useNavigate();
   const { setCurrentMove } = useUI();
@@ -26,39 +20,42 @@ export default function BoxDetail() {
   const [box, setBox] = useState<any>(null);
   const [boxes, setBoxes] = useState<any[]>([]);
   const [items, setItems] = useState<any[]>([]);
+  const [viewer, setViewer] = useState<string|null>(null); // full-size image viewer
 
+  const formRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const notesRef = useRef<HTMLInputElement>(null);
   const { toasts, push } = useToasts();
 
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<EditDraft | null>(null);
+  const [draggingId, setDraggingId] = useState<string|null>(null);
+  const [editing, setEditing] = useState<EditDraft|null>(null);
 
-  useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
+  useEffect(()=>{ if(moveId) setCurrentMove(moveId); }, [moveId]);
 
-  async function refresh() {
+  async function refresh(){
     const bx = await listBoxes(moveId!);
     setBoxes(bx);
     setBox(bx.find(x => x.id === boxId));
     setItems(await listItemsInBox(boxId!));
   }
-  useEffect(() => { refresh(); }, [moveId, boxId]);
+  useEffect(()=>{ refresh(); }, [moveId, boxId]);
 
-  async function addItem(e: React.FormEvent<HTMLFormElement>) {
+  async function addItem(e: React.FormEvent<HTMLFormElement>){
     e.preventDefault();
     const name = nameRef.current!.value.trim();
-    if (!name) return;
+    if(!name) return;
     const notes = notesRef.current!.value.trim();
     await createItem(moveId!, boxId!, { name, notes });
     push('Item added');
     nameRef.current!.value = '';
     notesRef.current!.value = '';
+    nameRef.current?.focus();               // ← refocus for rapid entry
     refresh();
   }
 
-  async function handleDrop(targetId: string) {
-    if (!draggingId || draggingId === targetId) return;
-    const ids = items.map((it: any) => it.id);
+  async function handleDrop(targetId: string){
+    if(!draggingId || draggingId===targetId) return;
+    const ids = items.map((it:any)=> it.id);
     const from = ids.indexOf(draggingId);
     const to = ids.indexOf(targetId);
     ids.splice(to, 0, ids.splice(from, 1)[0]);
@@ -67,13 +64,11 @@ export default function BoxDetail() {
     refresh();
   }
 
-  function startEdit(it: any) {
-    setEditing({ id: it.id, name: it.name, notes: it.notes || '', boxId: it.boxId });
-  }
-  function cancelEdit() { setEditing(null); }
+  function startEdit(it:any){ setEditing({ id: it.id, name: it.name, notes: it.notes || '', boxId: it.boxId }); }
+  function cancelEdit(){ setEditing(null); }
 
-  async function saveEdit() {
-    if (!editing) return;
+  async function saveEdit(){
+    if(!editing) return;
     await updateItem(editing.id, { name: editing.name.trim(), notes: editing.notes.trim() });
     await moveItemToBox(editing.id, editing.boxId);
     push('Item updated');
@@ -81,19 +76,19 @@ export default function BoxDetail() {
     refresh();
   }
 
-  async function removeItem(id: string) {
-    if (confirm('Delete item?')) {
+  async function removeItem(id:string){
+    if(confirm('Delete item?')){
       await deleteItem(id);
       push('Item deleted');
       refresh();
     }
   }
 
-  // ✅ FIX: update local state immediately when status changes
-  async function onStatusChange(next: any) {
-    if (!box) return;
+  // Status updates local state immediately
+  async function onStatusChange(next:any){
+    if(!box) return;
     await updateBox(box.id, { status: next });
-    setBox((prev: any) => (prev ? { ...prev, status: next } : prev));
+    setBox((prev:any)=> prev ? { ...prev, status: next } : prev);
     push('Status updated');
   }
 
@@ -108,27 +103,29 @@ export default function BoxDetail() {
 
       {box && (
         <div className="card p-3 sm:p-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <InlineEditable value={box.name} onSave={v => updateBox(box.id, { name: v })} className="text-xl font-semibold" />
-          </div>
+          <InlineEditable value={box.name} onSave={v=>updateBox(box.id, { name: v })} className="text-xl font-semibold" />
 
-          {/* use onStatusChange so UI updates instantly */}
           <StatusSelect value={box.status} onChange={onStatusChange} />
 
           <div className="mt-2">
             <div className="font-medium mb-2">Box Images</div>
             {box.images?.length ? (
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {box.images.map((src: string, i: number) => (
+                {box.images.map((src:string, i:number)=> (
                   <div key={i} className="relative">
-                    <img src={src} alt="" className="h-24 w-full object-cover rounded-xl border" />
+                    <img
+                      src={src}
+                      alt=""
+                      className="h-24 w-full object-cover rounded-xl border cursor-zoom-in"
+                      onClick={()=>setViewer(src)}                /* ← open full-size */
+                    />
                     <button
                       className="absolute top-1 right-1 bg-white/90 rounded-lg px-2 py-1 text-xs"
-                      onClick={async () => {
-                        const imgs = box.images.filter((_: any, idx: number) => idx !== i);
+                      onClick={async (e)=>{                        /* prevent opening viewer */
+                        e.stopPropagation();
+                        const imgs = box.images.filter((_:any, idx:number)=> idx!==i);
                         await updateBox(box.id, { images: imgs });
-                        push('Image removed');
-                        refresh();
+                        push('Image removed'); refresh();
                       }}
                     >✕</button>
                   </div>
@@ -138,22 +135,22 @@ export default function BoxDetail() {
               <div className="text-sm text-neutral-500">No images yet.</div>
             )}
             <div className="mt-2">
-              <ImagePicker onSave={async (url) => {
-                const imgs = [...(box.images || []), url];
-                await updateBox(box.id, { images: imgs });
-                push('Image saved');
-                refresh();
-              }} />
+              <ImagePicker onSave={async (url)=>{ const imgs=[...(box.images||[]), url]; await updateBox(box.id, { images: imgs }); push('Image saved'); refresh(); }} />
             </div>
           </div>
         </div>
       )}
 
       <div className="card p-3 sm:p-4">
-        <form onSubmit={addItem} className="flex flex-wrap items-end gap-2">
+        <form ref={formRef} onSubmit={addItem} className="flex flex-wrap items-end gap-2">
           <div className="flex-1 min-w-[220px]">
             <label className="text-sm text-neutral-600">Item name</label>
-            <input ref={nameRef} className="input input-sm" placeholder="e.g., Plates" />
+            <input
+              ref={nameRef}
+              className="input input-sm"
+              placeholder="e.g., Plates"
+              onKeyDown={(e)=>{ if(e.key==='Enter'){ e.preventDefault(); formRef.current?.requestSubmit(); }}} /* ← Enter submits, no jump */
+            />
           </div>
           <div className="flex-1 min-w-[220px]">
             <label className="text-sm text-neutral-600">Notes (optional)</label>
@@ -169,17 +166,17 @@ export default function BoxDetail() {
               <div
                 className="flex items-center gap-3"
                 draggable
-                onDragStart={() => setDraggingId(it.id)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDrop(it.id)}
+                onDragStart={()=>setDraggingId(it.id)}
+                onDragOver={(e)=>e.preventDefault()}
+                onDrop={()=>handleDrop(it.id)}
               >
                 <span className="cursor-grab select-none">☰</span>
                 <div className="flex-1 min-w-0">
                   <div className="font-medium truncate">{it.name}</div>
                   {it.notes && <div className="text-sm text-neutral-600 truncate">{it.notes}</div>}
                 </div>
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditing({ id: it.id, name: it.name, notes: it.notes || '', boxId: it.boxId })}>Edit</button>
-                <button className="btn btn-danger btn-sm" onClick={() => removeItem(it.id)}>Delete</button>
+                <button className="btn btn-ghost btn-sm" onClick={()=>setEditing({ id: it.id, name: it.name, notes: it.notes || '', boxId: it.boxId })}>Edit</button>
+                <button className="btn btn-danger btn-sm" onClick={()=>removeItem(it.id)}>Delete</button>
               </div>
 
               {editing?.id === it.id && (
@@ -190,7 +187,7 @@ export default function BoxDetail() {
                       <input
                         className="input input-sm mt-1"
                         value={editing.name}
-                        onChange={e => setEditing({ ...editing, name: e.target.value })}
+                        onChange={e=>setEditing({...editing, name: e.target.value})}
                       />
                     </label>
                     <label className="block text-sm">
@@ -198,9 +195,9 @@ export default function BoxDetail() {
                       <select
                         className="input input-sm mt-1"
                         value={editing.boxId}
-                        onChange={e => setEditing({ ...editing, boxId: e.target.value })}
+                        onChange={e=>setEditing({...editing, boxId: e.target.value})}
                       >
-                        {boxes.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                        {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
                       </select>
                     </label>
                     <label className="block text-sm sm:col-span-2">
@@ -208,7 +205,7 @@ export default function BoxDetail() {
                       <input
                         className="input input-sm mt-1"
                         value={editing.notes}
-                        onChange={e => setEditing({ ...editing, notes: e.target.value })}
+                        onChange={e=>setEditing({...editing, notes: e.target.value})}
                         placeholder="Notes (optional)"
                       />
                     </label>
@@ -216,7 +213,7 @@ export default function BoxDetail() {
                   <div className="mt-3 flex justify-end gap-2">
                     <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
                     <button className="btn btn-primary btn-sm" onClick={saveEdit}>Save</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => removeItem(it.id)}>Delete</button>
+                    <button className="btn btn-danger btn-sm" onClick={()=>removeItem(it.id)}>Delete</button>
                   </div>
                 </div>
               )}
@@ -227,6 +224,11 @@ export default function BoxDetail() {
           )}
         </div>
       </div>
+
+      {/* Full-size image viewer */}
+      <Modal open={!!viewer} onClose={()=>setViewer(null)} title="Image">
+        {viewer && <img src={viewer} alt="Full size" className="max-h-[75vh] w-full object-contain rounded-xl border" />}
+      </Modal>
 
       <Toasts toasts={toasts} />
     </div>
