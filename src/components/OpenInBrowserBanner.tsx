@@ -1,4 +1,4 @@
-import { isInAppBrowser, isIOS, isAndroid } from '@/utils/inApp';
+import { isInAppBrowser, isIOS, isAndroid } from '../utils/inApp';
 
 export default function OpenInBrowserBanner(){
   if (!isInAppBrowser) return null;
