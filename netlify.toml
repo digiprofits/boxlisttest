@@ -2,20 +2,13 @@
   command = "npm run build"
   publish = "dist"
 
+# Single-page app fallback
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-  [build]
-  command = "npm run build"
-  publish = "dist"
-
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-
+# Ensure correct content type + no long caching for the PWA files
 [[headers]]
   for = "/manifest.webmanifest"
   [headers.values]
