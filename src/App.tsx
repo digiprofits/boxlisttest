@@ -1,20 +1,13 @@
-import { Outlet, useNavigate, useParams } from 'react-router-dom';
-import TopBar from './components/TopBar';
-import { useEffect } from 'react';
-import { useUI } from './store';
+import { Outlet } from 'react-router-dom';
+import TopBar from '@/components/TopBar';
+import InstallBanner from '@/components/InstallBanner';
 
-export default function App(){
-  const nav = useNavigate();
-  const { currentMoveId, setCurrentMove } = useUI();
-
-  useEffect(()=>{
-    // stay as-is, route components manage currentMoveId
-  }, [currentMoveId]);
-
+export default function App() {
   return (
-    <div className="min-h-dvh bg-neutral-50">
+    <div className="min-h-screen">
       <TopBar />
-      <main className="mx-auto max-w-6xl px-4 py-6">
+      <InstallBanner />
+      <main className="mx-auto max-w-6xl px-3 sm:px-4 py-4">
         <Outlet />
       </main>
     </div>
