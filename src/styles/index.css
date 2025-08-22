@@ -8,10 +8,10 @@
 /* Core UI */
 .card { @apply bg-white rounded-2xl shadow-soft border border-neutral-200; }
 .btn { @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium transition; }
-.btn-primary { @apply btn bg-brand text-white hover:bg-brand-600; }
+.btn-primary { @apply btn bg-blue-600 text-white hover:bg-blue-700; }
 .btn-ghost { @apply btn bg-transparent hover:bg-neutral-100; }
 .btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
-.input { @apply w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-brand; }
+.input { @apply w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600; }
 .badge { @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium; }
 
 /* Compact variants */
@@ -29,7 +29,7 @@
 
 /* Tabs for TopBar */
 .tab { @apply px-3 py-2 rounded-xl text-sm font-medium hover:bg-neutral-100 whitespace-nowrap transition; }
-.tab-active { @apply bg-neutral-900 text-white; }
+.tab-active { @apply bg-blue-600 text-white; }  /* ← blue like buttons */
 
 /* A11y helper */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
