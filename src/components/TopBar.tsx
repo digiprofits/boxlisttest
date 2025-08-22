@@ -1,21 +1,12 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useUI } from '@/store';
+import InstallPrompt from '@/components/InstallPrompt';
 
-function Tab({
-  to,
-  children,
-  end = false,
-}: {
-  to: string;
-  children: React.ReactNode;
-  end?: boolean;
+function Tab({ to, children, end = false }:{
+  to: string; children: React.ReactNode; end?: boolean;
 }) {
   return (
-    <NavLink
-      to={to}
-      end={end}
-      className={({ isActive }) => `tab ${isActive ? 'tab-active' : ''}`}
-    >
+    <NavLink to={to} end={end} className={({ isActive }) => `tab ${isActive ? 'tab-active' : ''}`}>
       {children}
     </NavLink>
   );
@@ -24,8 +15,6 @@ function Tab({
 export default function TopBar() {
   const { currentMoveId } = useUI();
   const { pathname } = useLocation();
-
-  // Prefer moveId from the URL so links & active state always match the page
   const moveFromPath = pathname.match(/\/moves\/([^/]+)/)?.[1];
   const moveForLinks = moveFromPath || currentMoveId;
 
@@ -49,6 +38,8 @@ export default function TopBar() {
             )}
           </div>
         </nav>
+
+        <InstallPrompt />
       </div>
     </header>
   );
