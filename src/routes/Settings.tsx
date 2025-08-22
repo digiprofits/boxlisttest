@@ -26,7 +26,6 @@ export default function Settings(){
     const data=await exportJSON();
     download('boxlister-backup.json', JSON.stringify(data,null,2));
   }
-
   function handleImportJSON(e:React.ChangeEvent<HTMLInputElement>){
     const file=e.target.files?.[0]; if(!file) return;
     const reader=new FileReader();
@@ -36,7 +35,6 @@ export default function Settings(){
     }catch(err){ alert('Import failed: '+(err as Error).message); } };
     reader.readAsText(file);
   }
-
   function doExportCSV(){
     const csv=itemsToCSV(moves,boxes,items);
     download('boxlister-inventory.csv', csv, 'text/csv');
@@ -46,6 +44,26 @@ export default function Settings(){
     <div className="space-y-6">
       <h1 className="text-xl sm:text-2xl font-bold">Settings &amp; Data</h1>
 
+      {/* Install Tips */}
+      <div className="card p-4 space-y-3">
+        <div className="font-medium">Install Tips</div>
+        <p className="text-sm text-neutral-600">
+          If you dismissed the install banner and want to see it again, reset it here.
+        </p>
+        <div className="flex gap-2">
+          <button
+            className="btn btn-ghost"
+            onClick={()=>{
+              localStorage.removeItem('boxlister.install.dismissed');
+              alert('Install tips reset. Reload the page to show the banner again.');
+            }}
+          >
+            Reset Install Tips
+          </button>
+        </div>
+      </div>
+
+      {/* Data Export / Import */}
       <div className="card p-4 space-y-4">
         <div className="font-medium">Data Export / Import</div>
 
