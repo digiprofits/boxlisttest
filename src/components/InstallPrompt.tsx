@@ -11,91 +11,137 @@ export default function InstallPrompt(){
   const [openHelp, setOpenHelp] = useState(false);
 
   useEffect(() => {
+    // Already installed? Don't show anything.
     if (isStandalone()) return;
-    if (localStorage.getItem(DISMISS_KEY) === '1') return;
 
+    const dismissed = localStorage.getItem(DISMISS_KEY) === '1';
+    if (dismissed) return;
+
+    // Listen for native install prompt (Chrome on Android/Desktop)
     function onBIP(e: any){
-      e.preventDefault();
+      e.preventDefault();         // stash it so we can call prompt() later
       setBipEvent(e);
-      setMode(isAndroid ? 'android' : 'desktop');
+      // Keep the current mode; if none yet, pick android/desktop
+      setMode((m)=> m || (isAndroid ? 'android' : 'desktop'));
       setShow(true);
     }
     window.addEventListener('beforeinstallprompt', onBIP);
 
-    if (isIOS && !isStandalone()) {
-      setMode('ios');
-      setShow(true);
+    // Decide what to show if no BIP yet (or on iOS which never fires BIP)
+    if (isIOS) {
+      setMode('ios'); setShow(true);
+    } else if (isAndroid) {
+      // Show Android helper even if BIP hasn't fired yet (fallback to “⋮ → Install app”)
+      setMode('android'); setShow(true);
+    } else if (isChromeFamily) {
+      setMode('desktop'); setShow(true);
     }
 
-    if (!isIOS && !isAndroid && isChromeFamily) {
-      setMode('desktop');
-      setShow(true);
+    // If the user actually installs, clear any dismissal so it can reappear after uninstall in the future
+    function onAppInstalled(){
+      localStorage.removeItem(DISMISS_KEY);
+      setShow(false);
     }
+    window.addEventListener('appinstalled', onAppInstalled);
 
-    return () => window.removeEventListener('beforeinstallprompt', onBIP);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBIP);
+      window.removeEventListener('appinstalled', onAppInstalled);
+    };
   }, []);
 
   if (!show || mode === null) return null;
 
   function dismiss(){
+    // User explicitly chose “Don’t show again”
     localStorage.setItem(DISMISS_KEY, '1');
     setShow(false);
   }
 
   async function installNow(){
-    if (!bipEvent) { setOpenHelp(true); return; }
+    if (!bipEvent) {
+      // No captured native prompt → show instructions (⋮ → Install app)
+      setOpenHelp(true);
+      return;
+    }
     bipEvent.prompt();
-    try { await bipEvent.userChoice; } catch {}
-    dismiss();
+    try {
+      const choice = await bipEvent.userChoice;
+      // Only hide permanently if the user DISMISSED the prompt
+      if (choice && choice.outcome === 'dismissed') {
+        localStorage.setItem(DISMISS_KEY, '1');
+      }
+    } catch {
+      // On any error, don’t set the dismissal flag
+    }
+    setShow(false);
   }
 
   return (
     <>
+      {/* Desktop/tablet inline controls (right side of top bar) */}
       <div className="hidden sm:flex items-center gap-2 ml-auto">
         {mode === 'android' && (
           <>
-            <button className="btn btn-ghost btn-sm" onClick={installNow}>Install</button>
+            <button className="btn btn-ghost btn-sm" onClick={installNow}>
+              Install
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setOpenHelp(true)}>
+              How?
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={dismiss} aria-label="Dismiss">✕</button>
           </>
         )}
         {mode === 'ios' && (
           <>
-            <button className="btn btn-ghost btn-sm" onClick={()=>setOpenHelp(true)}>How to install</button>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setOpenHelp(true)}>
+              How to install
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={dismiss} aria-label="Dismiss">✕</button>
           </>
         )}
         {mode === 'desktop' && (
           <>
-            <button className="btn btn-ghost btn-sm" onClick={installNow}>Install</button>
-            <button className="btn btn-ghost btn-sm" onClick={()=>setOpenHelp(true)}>Where?</button>
+            <button className="btn btn-ghost btn-sm" onClick={installNow}>
+              Install
+            </button>
+            <button className="btn btn-ghost btn-sm" onClick={()=>setOpenHelp(true)}>
+              Where?
+            </button>
             <button className="btn btn-ghost btn-sm" onClick={dismiss} aria-label="Dismiss">✕</button>
           </>
         )}
       </div>
 
+      {/* Small-screen single button */}
       <div className="sm:hidden ml-auto">
-        <button className="btn btn-ghost btn-sm" onClick={mode==='android'||mode==='desktop' ? installNow : ()=>setOpenHelp(true)}>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={mode==='android'||mode==='desktop' ? installNow : ()=>setOpenHelp(true)}
+        >
           Install
         </button>
       </div>
 
+      {/* Device-specific help */}
       <Modal open={openHelp} onClose={()=>setOpenHelp(false)} title="Install BoxLister">
         {mode === 'ios' && (
           <ol className="list-decimal pl-5 space-y-2">
-            <li>Tap the <strong>Share</strong> icon in Safari.</li>
-            <li>Choose <strong>Add to Home Screen</strong>.</li>
-            <li>Tap <strong>Add</strong>.</li>
+            <li>Open in <strong>Safari</strong>.</li>
+            <li>Tap the <strong>Share</strong> icon.</li>
+            <li>Choose <strong>Add to Home Screen</strong> → <strong>Add</strong>.</li>
           </ol>
         )}
         {mode === 'android' && (
           <ol className="list-decimal pl-5 space-y-2">
-            <li>Tap <strong>Install</strong> when prompted.</li>
-            <li>If you don’t see it, tap the <strong>⋮ menu</strong> and choose <strong>Install app</strong>.</li>
+            <li>If prompted, tap <strong>Install</strong>.</li>
+            <li>If not, tap the <strong>⋮ menu</strong> in Chrome.</li>
+            <li>Choose <strong>Install app</strong>.</li>
           </ol>
         )}
         {mode === 'desktop' && (
           <ol className="list-decimal pl-5 space-y-2">
-            <li>Click the <strong>Install</strong> icon (or <strong>+</strong>) in your browser’s address bar.</li>
+            <li>Click the <strong>Install</strong> (or <strong>+</strong>) icon in the address bar.</li>
             <li>Confirm to add the app.</li>
           </ol>
         )}
