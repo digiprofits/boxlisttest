@@ -28,8 +28,17 @@
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 /* Tabs for TopBar */
-.tab { @apply px-3 py-2 rounded-xl text-sm font-medium hover:bg-neutral-100 whitespace-nowrap transition; }
-.tab-active { @apply bg-blue-600 text-white; }  /* ← blue like buttons */
+.tab {
+  @apply px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors;
+}
+/* Hover for normal tabs */
+.tab:hover { @apply bg-neutral-100; }
+
+/* >>> ACTIVE TAB FIX <<< */
+.tab-active { @apply bg-blue-600 text-white; }
+.tab-active:hover,
+.tab-active:focus,
+.tab-active:active { @apply bg-blue-600 text-white; } /* ensure blue stays when interacting */
 
 /* A11y helper */
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
