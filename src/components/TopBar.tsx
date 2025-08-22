@@ -1,6 +1,5 @@
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { useUI } from '@/store';
-import InstallPrompt from '@/components/InstallPrompt';
 
 function Tab({ to, children, end = false }:{
   to: string; children: React.ReactNode; end?: boolean;
@@ -38,8 +37,6 @@ export default function TopBar() {
             )}
           </div>
         </nav>
-
-        <InstallPrompt />
       </div>
     </header>
   );
