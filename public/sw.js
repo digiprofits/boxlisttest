@@ -1,11 +1,11 @@
-// Minimal SW: offline SPA shell + cache Vite assets
+// public/sw.js
 const SHELL = 'boxlister-shell-v1';
 const ASSETS = 'boxlister-assets-v1';
 
 self.addEventListener('install', (evt) => {
   evt.waitUntil(
     caches.open(SHELL).then((c) => c.addAll(['/index.html']))
-      .then(() => self.skipWaiting())
+      .then(() => self.skipWaiting()) // activate new SW immediately
   );
 });
 
@@ -15,11 +15,11 @@ self.addEventListener('activate', (evt) => {
       Promise.all(keys.map((k) =>
         (k.startsWith('boxlister-') && ![SHELL, ASSETS].includes(k)) ? caches.delete(k) : null
       ))
-    ).then(() => self.clients.claim())
+    ).then(() => self.clients.claim()) // take control of open tabs
   );
 });
 
-// SPA navigations: network-first, fallback to cached index.html
+// Network-first for navigations; fallback to cached SPA shell
 self.addEventListener('fetch', (evt) => {
   const req = evt.request;
   const url = new URL(req.url);
@@ -39,7 +39,7 @@ self.addEventListener('fetch', (evt) => {
     return;
   }
 
-  // Cache Vite-built assets
+  // Cache-bust Vite assets
   if (url.pathname.startsWith('/assets/')) {
     evt.respondWith((async () => {
       const cache = await caches.open(ASSETS);
