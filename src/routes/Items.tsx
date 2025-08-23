@@ -1,153 +1,249 @@
 import { useEffect, useMemo, useState } from 'react';
-import { listAllItemsInMove, listBoxes, updateItem, deleteItem, moveItemToBox, useUI } from '@/store';
-import { useParams, Link } from 'react-router-dom';
-import Toasts, { useToasts } from '@/components/Toasts';
+import { Link, useParams } from 'react-router-dom';
+import {
+  listBoxes,
+  listItemsInBox,
+  updateItem,
+  removeItem,
+} from '@/store';
 
-type EditDraft = { id:string; name:string; notes:string; boxId:string };
+type Box = { id: string; name: string; moveId: string };
+type Item = {
+  id: string;
+  name: string;
+  notes?: string;
+  boxId: string;
+  updatedAt?: number;
+};
 
-function shortWhen(ts:number){
-  return new Date(ts).toLocaleString([], { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' });
+type Row = Item & { boxName: string };
+
+function formatDateShort(ts?: number) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const now = new Date();
+  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  const base = d.toLocaleDateString(undefined, opts);
+  return d.getFullYear() !== now.getFullYear() ? `${base}, ${d.getFullYear()}` : base;
 }
 
-export default function Items(){
+export default function Items() {
   const { moveId } = useParams();
-  const { setCurrentMove } = useUI();
-  const [items, setItems] = useState<any[]>([]);
-  const [boxes, setBoxes] = useState<any[]>([]);
-  const [q, setQ] = useState('');
-  const [editing, setEditing] = useState<EditDraft|null>(null);
-  const { toasts, push } = useToasts();
+  const [boxes, setBoxes] = useState<Box[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [query, setQuery] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [editBoxId, setEditBoxId] = useState<string>('');
 
-  useEffect(()=>{ if(moveId) setCurrentMove(moveId); }, [moveId]);
+  // Load boxes + items for the current move
+  useEffect(() => {
+    if (!moveId) return;
+    (async () => {
+      const bxs = await listBoxes(moveId);
+      setBoxes(bxs);
 
-  async function refresh(){
-    const [it, bx] = await Promise.all([listAllItemsInMove(moveId!), listBoxes(moveId!)]);
-    setItems(it); setBoxes(bx);
+      const all: Row[] = [];
+      for (const b of bxs) {
+        const its: Item[] = await listItemsInBox(b.id);
+        for (const it of its) {
+          all.push({ ...it, boxName: b.name });
+        }
+      }
+      // newest first
+      all.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      setRows(all);
+    })();
+  }, [moveId]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(
+      (r) =>
+        r.name.toLowerCase().includes(q) ||
+        r.boxName.toLowerCase().includes(q) ||
+        (r.notes || '').toLowerCase().includes(q),
+    );
+  }, [rows, query]);
+
+  function startEdit(item: Row) {
+    setEditingId(item.id);
+    setEditName(item.name);
+    setEditNotes(item.notes || '');
+    setEditBoxId(item.boxId);
   }
-  useEffect(()=>{ refresh(); }, [moveId]);
 
-  const boxName = useMemo(()=>{
-    const m = new Map(boxes.map((b:any)=>[b.id,b.name]));
-    return (id:string)=> m.get(id) || '';
-  }, [boxes]);
-
-  const filtered = items.filter(it => {
-    const hay = (it.name + ' ' + (it.notes||'') + ' ' + boxName(it.boxId)).toLowerCase();
-    return hay.includes(q.toLowerCase());
-  });
-
-  function startEdit(it:any){
-    setEditing({ id: it.id, name: it.name, notes: it.notes || '', boxId: it.boxId });
+  async function saveEdit(id: string) {
+    // Persist
+    await updateItem(id, {
+      name: editName.trim() || 'Untitled',
+      notes: editNotes.trim(),
+      boxId: editBoxId,
+      updatedAt: Date.now(),
+    });
+    // Update list in-place
+    setRows((prev) =>
+      prev
+        .map((r) =>
+          r.id === id
+            ? {
+                ...r,
+                name: editName.trim() || 'Untitled',
+                notes: editNotes.trim(),
+                boxId: editBoxId,
+                boxName: boxes.find((b) => b.id === editBoxId)?.name || r.boxName,
+                updatedAt: Date.now(),
+              }
+            : r,
+        )
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)),
+    );
+    setEditingId(null);
   }
-  function cancelEdit(){ setEditing(null); }
 
-  async function saveEdit(){
-    if(!editing) return;
-    await updateItem(editing.id, { name: editing.name.trim(), notes: editing.notes.trim() });
-    await moveItemToBox(editing.id, editing.boxId);
-    push('Item updated');
-    setEditing(null);
-    refresh();
-  }
-
-  async function removeItem(id:string){
-    if(confirm('Delete item?')){
-      await deleteItem(id);
-      push('Item deleted');
-      refresh();
-    }
+  async function deleteItem(id: string) {
+    if (!confirm('Delete this item?')) return;
+    await removeItem(id);
+    setRows((prev) => prev.filter((r) => r.id !== id));
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl sm:text-2xl font-bold">Items</h1>
-        <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Search items..." className="input input-sm w-72" />
-      </div>
+      <h1 className="text-xl sm:text-2xl font-bold">Items</h1>
 
-      {/* Compact list just like Boxes */}
-      <div className="card p-0 overflow-hidden">
-        {filtered.map((it, idx)=>(
-          <div key={it.id} className={`px-3 sm:px-4 py-3 ${idx!==filtered.length-1?'border-b':''}`}>
-            {/* Row */}
-            <div className="flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold truncate">{it.name}</div>
-                <div className="text-sm text-neutral-600 truncate">
-                  Box: <Link to={`/moves/${moveId}/boxes/${it.boxId}`} className="text-brand underline">{boxName(it.boxId)}</Link>
-                </div>
-              </div>
+      <input
+        className="input"
+        placeholder="Search items..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
 
-              <span className="badge badge-sm border-neutral-300 shrink-0">{shortWhen(it.updatedAt)}</span>
+      {filtered.length === 0 ? (
+        <div className="card p-4 text-neutral-600">No items found.</div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((item) => {
+            const isEditing = editingId === item.id;
+            return (
+              <div key={item.id} className="card p-4">
+                {/* Top row: Item name (left) + Box link, date, edit, delete (right) */}
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-lg truncate">{item.name}</div>
+                  </div>
 
-              {/* Actions: edit + delete (icon buttons like Boxes) */}
-              <button
-                className="btn-icon btn-ghost"
-                title="Edit item"
-                aria-label="Edit item"
-                onClick={()=>startEdit(it)}
-              >
-                <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
-                </svg>
-              </button>
-              <button
-                className="btn-icon btn-danger"
-                title="Delete item"
-                aria-label="Delete item"
-                onClick={()=>removeItem(it.id)}
-              >
-                <svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
-                </svg>
-              </button>
-            </div>
-
-            {/* Inline editor (shown only when Edit is clicked) */}
-            {editing?.id === it.id && (
-              <div className="mt-3 rounded-xl border p-3 bg-neutral-50">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="block text-sm">
-                    <span className="text-neutral-600">Name</span>
-                    <input
-                      className="input input-sm mt-1"
-                      value={editing.name}
-                      onChange={e=>setEditing({...editing, name: e.target.value})}
-                    />
-                  </label>
-                  <label className="block text-sm">
-                    <span className="text-neutral-600">Box</span>
-                    <select
-                      className="input input-sm mt-1"
-                      value={editing.boxId}
-                      onChange={e=>setEditing({...editing, boxId: e.target.value})}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {/* Box link in blue */}
+                    <Link
+                      to={`/moves/${moveId}/boxes/${item.boxId}`}
+                      className="text-blue-600 hover:underline font-medium"
+                      title={`Open box: ${item.boxName}`}
                     >
-                      {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
-                    </select>
-                  </label>
-                  <label className="block text-sm sm:col-span-2">
-                    <span className="text-neutral-600">Notes</span>
-                    <input
-                      className="input input-sm mt-1"
-                      value={editing.notes}
-                      onChange={e=>setEditing({...editing, notes: e.target.value})}
-                      placeholder="Notes (optional)"
-                    />
-                  </label>
-                </div>
-                <div className="mt-3 flex justify-end gap-2">
-                  <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
-                  <button className="btn btn-primary btn-sm" onClick={saveEdit}>Save</button>
-                  <button className="btn btn-danger btn-sm" onClick={()=>removeItem(it.id)}>Delete</button>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-        {filtered.length===0 && <div className="p-6 text-center text-neutral-500">No items match your search.</div>}
-      </div>
+                      {item.boxName}
+                    </Link>
 
-      <Toasts toasts={toasts} />
+                    {/* Compact date badge (no time) */}
+                    {item.updatedAt && (
+                      <span className="badge badge-sm border-neutral-300 text-neutral-700">
+                        {formatDateShort(item.updatedAt)}
+                      </span>
+                    )}
+
+                    {/* Edit */}
+                    <button
+                      className="btn btn-ghost btn-icon"
+                      aria-label="Edit item"
+                      onClick={() => (isEditing ? setEditingId(null) : startEdit(item))}
+                      title="Edit"
+                    >
+                      {/* pencil */}
+                      <svg className="icon" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" stroke="currentColor" strokeWidth="1.5"/>
+                        <path d="M14.06 6.19l3.75 3.75" stroke="currentColor" strokeWidth="1.5"/>
+                      </svg>
+                    </button>
+
+                    {/* Delete */}
+                    <button
+                      className="btn btn-danger btn-sm"
+                      onClick={() => deleteItem(item.id)}
+                    >
+                      {/* trash */}
+                      <svg className="icon mr-1" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 6h18M9 6V4h6v2M8 6v14h8V6" stroke="currentColor" strokeWidth="1.5"/>
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {/* Editing panel (opens only when Edit tapped) */}
+                {isEditing && (
+                  <div className="mt-4 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Item name</label>
+                      <input
+                        className="input"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder="e.g., Plates"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            saveEdit(item.id);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Notes (optional)</label>
+                      <input
+                        className="input"
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        placeholder="Glass / fragile"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            saveEdit(item.id);
+                          }
+                        }}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Move to box</label>
+                      <select
+                        className="input"
+                        value={editBoxId}
+                        onChange={(e) => setEditBoxId(e.target.value)}
+                      >
+                        {boxes.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex gap-2 justify-end">
+                      <button className="btn btn-ghost" onClick={() => setEditingId(null)}>
+                        Cancel
+                      </button>
+                      <button className="btn btn-primary" onClick={() => saveEdit(item.id)}>
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
