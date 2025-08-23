@@ -1,22 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import {
-  listBoxes,
-  listItemsInBox,
-  updateItem,
-  removeItem,
-} from '@/store';
+import * as Store from '@/store'; // safer than named imports across refactors
 
-type Box = { id: string; name: string; moveId: string };
-type Item = {
+type Row = {
   id: string;
   name: string;
   notes?: string;
   boxId: string;
+  boxName: string;
   updatedAt?: number;
 };
-
-type Row = Item & { boxName: string };
 
 function formatDateShort(ts?: number) {
   if (!ts) return '';
@@ -29,26 +22,33 @@ function formatDateShort(ts?: number) {
 
 export default function Items() {
   const { moveId } = useParams();
-  const [boxes, setBoxes] = useState<Box[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
+  const [boxes, setBoxes] = useState<any[]>([]);
   const [query, setQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editNotes, setEditNotes] = useState('');
   const [editBoxId, setEditBoxId] = useState<string>('');
 
-  // Load boxes + items for the current move
+  // Load boxes and items for this move
   useEffect(() => {
     if (!moveId) return;
     (async () => {
-      const bxs = await listBoxes(moveId);
+      const bxs: any[] = await (Store as any).listBoxes(moveId);
       setBoxes(bxs);
 
       const all: Row[] = [];
       for (const b of bxs) {
-        const its: Item[] = await listItemsInBox(b.id);
+        const its: any[] = await (Store as any).listItemsInBox(b.id);
         for (const it of its) {
-          all.push({ ...it, boxName: b.name });
+          all.push({
+            id: it.id,
+            name: it.name,
+            notes: it.notes,
+            boxId: b.id,
+            boxName: b.name,
+            updatedAt: it.updatedAt,
+          });
         }
       }
       // newest first
@@ -76,14 +76,12 @@ export default function Items() {
   }
 
   async function saveEdit(id: string) {
-    // Persist
-    await updateItem(id, {
+    await (Store as any).updateItem(id, {
       name: editName.trim() || 'Untitled',
       notes: editNotes.trim(),
       boxId: editBoxId,
       updatedAt: Date.now(),
     });
-    // Update list in-place
     setRows((prev) =>
       prev
         .map((r) =>
@@ -105,7 +103,7 @@ export default function Items() {
 
   async function deleteItem(id: string) {
     if (!confirm('Delete this item?')) return;
-    await removeItem(id);
+    await (Store as any).removeItem(id);
     setRows((prev) => prev.filter((r) => r.id !== id));
   }
 
@@ -128,14 +126,14 @@ export default function Items() {
             const isEditing = editingId === item.id;
             return (
               <div key={item.id} className="card p-4">
-                {/* Top row: Item name (left) + Box link, date, edit, delete (right) */}
+                {/* Row header: name (left) • box link, date, edit, delete (right) */}
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-lg truncate">{item.name}</div>
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
-                    {/* Box link in blue */}
+                    {/* Box link */}
                     <Link
                       to={`/moves/${moveId}/boxes/${item.boxId}`}
                       className="text-blue-600 hover:underline font-medium"
@@ -144,7 +142,7 @@ export default function Items() {
                       {item.boxName}
                     </Link>
 
-                    {/* Compact date badge (no time) */}
+                    {/* Date (compact) */}
                     {item.updatedAt && (
                       <span className="badge badge-sm border-neutral-300 text-neutral-700">
                         {formatDateShort(item.updatedAt)}
@@ -158,7 +156,6 @@ export default function Items() {
                       onClick={() => (isEditing ? setEditingId(null) : startEdit(item))}
                       title="Edit"
                     >
-                      {/* pencil */}
                       <svg className="icon" viewBox="0 0 24 24" fill="none">
                         <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z" stroke="currentColor" strokeWidth="1.5"/>
                         <path d="M14.06 6.19l3.75 3.75" stroke="currentColor" strokeWidth="1.5"/>
@@ -166,11 +163,7 @@ export default function Items() {
                     </button>
 
                     {/* Delete */}
-                    <button
-                      className="btn btn-danger btn-sm"
-                      onClick={() => deleteItem(item.id)}
-                    >
-                      {/* trash */}
+                    <button className="btn btn-danger btn-sm" onClick={() => deleteItem(item.id)}>
                       <svg className="icon mr-1" viewBox="0 0 24 24" fill="none">
                         <path d="M3 6h18M9 6V4h6v2M8 6v14h8V6" stroke="currentColor" strokeWidth="1.5"/>
                       </svg>
@@ -179,7 +172,7 @@ export default function Items() {
                   </div>
                 </div>
 
-                {/* Editing panel (opens only when Edit tapped) */}
+                {/* Editing panel */}
                 {isEditing && (
                   <div className="mt-4 space-y-3">
                     <div>
