@@ -14,11 +14,19 @@
   <body class="bg-neutral-50">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Auto-reload once when an updated service worker takes control -->
     <script>
-      // Register service worker after load
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+          navigator.serviceWorker.register('/sw.js').then(() => {
+            let refreshing = false;
+            navigator.serviceWorker.addEventListener('controllerchange', () => {
+              if (refreshing) return;
+              refreshing = true;
+              window.location.reload();
+            });
+          }).catch(() => {});
         });
       }
     </script>
