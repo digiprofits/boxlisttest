@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as Store from '@/store';
 
+/* ─────────────────────────── Types ─────────────────────────── */
 type Box = {
   id: string;
-  name: string;
   moveId: string;
+  name: string;
   status?: string;
   images?: string[];
   itemCount?: number;
@@ -13,30 +14,31 @@ type Box = {
 
 type Item = {
   id: string;
+  boxId: string;
   name: string;
   notes?: string;
-  boxId: string;
   updatedAt?: number;
 };
 
 const STATUS_OPTIONS = ['Open', 'Packed', 'Sealed', 'Unpacked'] as const;
 
+/* ─────────────────────── Helper: safe store call ─────────────────────── */
 async function call(fn: string, ...args: any[]) {
   const f = (Store as any)[fn];
   if (typeof f === 'function') return await f(...args);
   return undefined;
 }
 
+/* ────────────────────────── Route switcher ────────────────────────── */
 export default function BoxesRoute() {
   const { moveId, boxId } = useParams();
   if (boxId) return <BoxDetail moveId={moveId!} boxId={boxId} />;
   return <BoxesList moveId={moveId!} />;
 }
 
-/* ----------------------------- Boxes List ---------------------------- */
+/* ╔══════════════════════════  LIST  ══════════════════════════╗ */
 function BoxesList({ moveId }: { moveId: string }) {
   const nav = useNavigate();
-
   const [boxes, setBoxes] = useState<Box[]>([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
@@ -44,59 +46,57 @@ function BoxesList({ moveId }: { moveId: string }) {
   useEffect(() => {
     let alive = true;
     (async () => {
-      try {
-        setLoading(true);
-        const list: Box[] = (await call('listBoxes', moveId)) || [];
-        const withCounts = await Promise.all(
-          list.map(async (b) => {
-            if (typeof b.itemCount === 'number') return b;
-            const items: Item[] = (await call('listItemsInBox', b.id)) || [];
-            return { ...b, itemCount: items.length };
-          })
-        );
-        if (!alive) return;
+      setLoading(true);
+      const list: Box[] = (await call('listBoxes', moveId)) || [];
+      const withCounts = await Promise.all(
+        list.map(async (b) => {
+          if (typeof b.itemCount === 'number') return b;
+          const items: Item[] = (await call('listItemsInBox', b.id)) || [];
+          return { ...b, itemCount: items.length };
+        })
+      );
+      if (alive) {
         setBoxes(withCounts);
-      } finally {
-        if (alive) setLoading(false);
+        setLoading(false);
       }
     })();
-    const t = setTimeout(() => alive && setLoading(false), 6000);
     return () => {
       alive = false;
-      clearTimeout(t);
     };
   }, [moveId]);
 
   async function addBox() {
-    const desired = newName.trim();
-    if (!desired) return;
+    const name = newName.trim();
+    if (!name) return;
 
     setNewName('');
 
-    // Try multiple store signatures
+    // Try common store signatures to create the box
     let created: Box | undefined =
-      (await call('addBox', moveId, desired)) ||
-      (await call('createBox', moveId, desired)) ||
-      (await call('addBox', moveId, { name: desired })) ||
-      (await call('createBox', moveId, { name: desired })) ||
-      (await call('newBox', { moveId, name: desired }));
+      (await call('addBox', moveId, name)) ||
+      (await call('createBox', moveId, name)) ||
+      (await call('addBox', moveId, { name })) ||
+      (await call('createBox', moveId, { name })) ||
+      (await call('newBox', { moveId, name }));
 
+    // As a fallback, fetch the most recent box from store
     if (!created) {
       const list: Box[] = (await call('listBoxes', moveId)) || [];
       created = list[list.length - 1];
     }
 
-    if (created && created.name !== desired) {
+    // Ensure the name sticks if store defaulted to "New Box"
+    if (created && created.name !== name) {
       await (
-        call('updateBox', created.id, { name: desired }) ??
-        call('renameBox', created.id, desired) ??
-        call('saveBox', { ...created, name: desired })
+        call('updateBox', created.id, { name }) ??
+        call('renameBox', created.id, name) ??
+        call('saveBox', { ...created, name })
       );
-      created = { ...created, name: desired };
+      created = { ...created, name };
     }
 
     if (created) {
-      nav(`/moves/${moveId}/boxes/${created.id}`, { state: { name: desired } });
+      nav(`/moves/${moveId}/boxes/${created.id}`);
     }
   }
 
@@ -109,8 +109,32 @@ function BoxesList({ moveId }: { moveId: string }) {
 
   async function deleteBox(id: string) {
     if (!confirm('Delete this box?')) return;
-    await (call('removeBox', id) ?? call('deleteBox', id));
-    setBoxes((prev) => prev.filter((b) => b.id !== id));
+
+    // Try the usual APIs
+    await (
+      call('deleteBox', id) ??
+      call('removeBox', id) ??
+      call('deleteBoxById', id) ??
+      call('destroyBox', id)
+    );
+
+    // Verify deletion; if it still exists, try Dexie fallback
+    const still = ((await call('listBoxes', moveId)) || []).some((b: Box) => b.id === id);
+    if (still) {
+      const anyStore: any = Store as any;
+      const db = anyStore.db || anyStore.dexie || anyStore._db;
+      try {
+        if (db?.boxes?.delete) {
+          await db.boxes.delete(id);
+        }
+      } catch {
+        // ignore; last resort only
+      }
+    }
+
+    // Update UI
+    const remaining: Box[] = (await call('listBoxes', moveId)) || [];
+    setBoxes(remaining);
   }
 
   if (loading) return <div className="p-4 text-neutral-600">Loading...</div>;
@@ -141,7 +165,7 @@ function BoxesList({ moveId }: { moveId: string }) {
               <div className="flex items-center justify-between gap-3">
                 <Link
                   to={`/moves/${moveId}/boxes/${b.id}`}
-                  className="font-semibold hover:underline"
+                  className="font-semibold hover:underline truncate"
                 >
                   {b.name}
                 </Link>
@@ -160,18 +184,16 @@ function BoxesList({ moveId }: { moveId: string }) {
   );
 }
 
-/* ----------------------------- Box Detail ---------------------------- */
+/* ╔══════════════════════════  DETAIL  ══════════════════════════╗ */
 function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
   const nav = useNavigate();
-  const location = useLocation() as { state?: { name?: string } };
 
   const [box, setBox] = useState<Box | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const [newName, setNewName] = useState('');
-  const [newNotes, setNewNotes] = useState('');
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemNotes, setNewItemNotes] = useState('');
   const nameRef = useRef<HTMLInputElement>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -181,62 +203,48 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
   useEffect(() => {
     let alive = true;
     (async () => {
-      try {
-        setLoading(true);
-        setLoadError(null);
+      setLoading(true);
 
-        let found: Box | undefined;
+      let found: Box | undefined =
+        ((await call('getBox', boxId)) as Box) ||
+        ((await call('getBoxById', boxId)) as Box);
+
+      if (!found) {
         const list: Box[] = (await call('listBoxes', moveId)) || [];
         found = list.find((b) => b.id === boxId);
-        if (!found) found = (await call('getBox', boxId)) as Box | undefined;
-        if (!found) found = (await call('getBoxById', boxId)) as Box | undefined;
+      }
 
-        if (!found && location.state?.name) {
-          found = {
-            id: boxId,
-            moveId,
-            name: location.state.name,
-            status: 'Open',
-            images: [],
-          } as Box;
-        }
+      const listItems: Item[] = ((await call('listItemsInBox', boxId)) || []).sort(
+        (a: Item, b: Item) => (b.updatedAt || 0) - (a.updatedAt || 0)
+      );
 
-        if (!alive) return;
+      if (alive) {
         setBox(found ?? null);
-
-        let loaded: Item[] = [];
-        if (found) {
-          loaded = (await call('listItemsInBox', boxId)) || [];
-          loaded.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-        }
-        if (!alive) return;
-        setItems(loaded);
-      } catch (err: any) {
-        if (!alive) return;
-        setLoadError(err?.message || 'Failed to load box.');
-      } finally {
-        if (alive) setLoading(false);
+        setItems(listItems);
+        setLoading(false);
       }
     })();
-
-    const t = setTimeout(() => {
-      if (alive) setLoading(false);
-    }, 6000);
-
     return () => {
       alive = false;
-      clearTimeout(t);
     };
-  }, [moveId, boxId, location.state?.name]);
+  }, [moveId, boxId]);
 
+  /* ────────── Save button (just navigates back) ────────── */
+  function saveAndExit() {
+    nav(`/moves/${moveId}/boxes`);
+  }
+
+  /* ────────── Status + Images ────────── */
   async function onStatusChange(next: string) {
     if (!box) return;
     const prev = box.status;
     setBox({ ...box, status: next });
     try {
-      await call('updateBoxStatus', box.id, next) ??
+      await (
+        call('updateBoxStatus', box.id, next) ??
         call('updateBox', box.id, { status: next }) ??
-        call('saveBox', { ...box, status: next });
+        call('saveBox', { ...box, status: next })
+      );
     } catch {
       setBox((b) => (b ? { ...b, status: prev } : b));
       alert('Could not update status. Try again.');
@@ -278,30 +286,30 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     }
   }
 
+  /* ────────── Items (add/edit/delete) ────────── */
   async function addItem() {
     if (!box) return;
-    const name = newName.trim();
+    const name = newItemName.trim();
     if (!name) {
       nameRef.current?.focus();
       return;
     }
-    const notes = newNotes.trim();
-    const payload = { name, notes, boxId: box.id, updatedAt: Date.now() };
+    const notes = newItemNotes.trim();
 
-    try {
-      let created: Item | undefined =
-        (await call('createItem', payload)) ||
-        (await call('addItemToBox', box.id, { name, notes })) ||
-        (await call('addItem', box.id, { name, notes }));
-      if (!created) created = { id: crypto.randomUUID(), ...payload };
+    let created: Item | undefined =
+      (await call('createItem', { name, notes, boxId: box.id })) ||
+      (await call('addItemToBox', box.id, { name, notes })) ||
+      (await call('addItem', box.id, { name, notes }));
 
-      setItems((prev) => [{ ...created! }, ...prev]);
-      setNewName('');
-      setNewNotes('');
-      nameRef.current?.focus();
-    } catch {
-      alert('Failed to add item.');
+    if (!created) {
+      created = { id: crypto.randomUUID(), boxId: box.id, name, notes, updatedAt: Date.now() };
+      await (call('saveItem', created.id, created) ?? Promise.resolve());
     }
+
+    setItems((prev) => [{ ...created!, updatedAt: Date.now() }, ...prev]);
+    setNewItemName('');
+    setNewItemNotes('');
+    nameRef.current?.focus();
   }
 
   function onNameKey(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -319,43 +327,22 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
 
   async function saveEdit(id: string) {
     const patch = { name: editName.trim() || 'Untitled', notes: editNotes.trim(), updatedAt: Date.now() };
-    try {
-      await (call('updateItem', id, patch) ?? call('saveItem', id, patch));
-      setItems((prev) =>
-        prev
-          .map((it) => (it.id === id ? { ...it, ...patch } : it))
-          .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)),
-      );
-      setEditingId(null);
-    } catch {
-      alert('Failed to save item.');
-    }
+    await (call('updateItem', id, patch) ?? call('saveItem', id, patch));
+    setItems((prev) =>
+      prev
+        .map((it) => (it.id === id ? { ...it, ...patch } : it))
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    );
+    setEditingId(null);
   }
 
   async function deleteItem(id: string) {
     if (!confirm('Delete this item?')) return;
-    try {
-      await (call('removeItem', id) ?? call('deleteItem', id));
-      setItems((prev) => prev.filter((it) => it.id !== id));
-    } catch {
-      alert('Failed to delete item.');
-    }
-  }
-
-  function saveAndExit() {
-    nav(`/moves/${moveId}/boxes`);
+    await (call('removeItem', id) ?? call('deleteItem', id));
+    setItems((prev) => prev.filter((it) => it.id !== id));
   }
 
   if (loading) return <div className="p-4 text-neutral-600">Loading...</div>;
-  if (loadError)
-    return (
-      <div className="p-4 space-y-3">
-        <div className="text-red-600 font-medium">{loadError}</div>
-        <button className="btn btn-primary" onClick={() => nav(`/moves/${moveId}/boxes`)}>
-          Back to Boxes
-        </button>
-      </div>
-    );
   if (!box)
     return (
       <div className="p-4 space-y-3">
@@ -368,22 +355,20 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Top line with Back + page title */}
-      <div className="flex items-center gap-3">
-        <button className="btn btn-ghost" onClick={() => nav(-1)} aria-label="Back">
-          ← Back
-        </button>
-        <h1 className="text-2xl font-bold">Box</h1>
+      {/* Top toolbar: Back + Save (always visible) */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <button className="btn btn-ghost" onClick={() => nav(-1)} aria-label="Back">
+            ← Back
+          </button>
+          <h1 className="text-2xl font-bold">Box</h1>
+        </div>
+        <button className="btn btn-primary" onClick={saveAndExit}>Save</button>
       </div>
 
-      {/* Box card (Save button next to box name) */}
+      {/* Box header card */}
       <div className="card p-4 space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xl sm:text-2xl font-bold">{box.name}</h2>
-          <button className="btn btn-primary" onClick={saveAndExit}>
-            Save
-          </button>
-        </div>
+        <h2 className="text-xl sm:text-2xl font-bold">{box.name}</h2>
 
         {/* Status */}
         <div>
@@ -412,7 +397,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
                     src={src}
                     alt=""
                     className="h-28 w-28 rounded-xl object-cover border border-neutral-200"
-                    onClick={() => window.open(src, '_blank')}
+                    onClick={() => openImageFull(src)}
                   />
                   <button
                     className="btn btn-ghost btn-icon absolute -top-2 -right-2 bg-white/90"
@@ -452,8 +437,8 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
             ref={nameRef}
             className="input"
             placeholder="e.g., Plates"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
+            value={newItemName}
+            onChange={(e) => setNewItemName(e.target.value)}
             onKeyDown={onNameKey}
           />
         </div>
@@ -462,8 +447,8 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
           <input
             className="input"
             placeholder="Glass / fragile"
-            value={newNotes}
-            onChange={(e) => setNewNotes(e.target.value)}
+            value={newItemNotes}
+            onChange={(e) => setNewItemNotes(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();
@@ -498,3 +483,61 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
                   <div className="flex items-center gap-2">
                     <button
                       className="btn btn-ghost"
+                      onClick={() => (isEditing ? setEditingId(null) : startEdit(it))}
+                    >
+                      Edit
+                    </button>
+                    <button className="btn btn-danger" onClick={() => deleteItem(it.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {isEditing && (
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Item name</label>
+                      <input
+                        className="input"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            saveEdit(it.id);
+                          }
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Notes (optional)</label>
+                      <input
+                        className="input"
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            saveEdit(it.id);
+                          }
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button className="btn btn-ghost" onClick={() => setEditingId(null)}>
+                        Cancel
+                      </button>
+                      <button className="btn btn-primary" onClick={() => saveEdit(it.id)}>
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
