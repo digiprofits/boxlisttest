@@ -13,6 +13,46 @@ type Item = {
   boxId: string;
 };
 
+/* compat helpers */
+async function call(name: string, ...args: any[]) {
+  const fn = (Store as any)[name];
+  if (typeof fn === "function") return await fn(...args);
+  return undefined;
+}
+
+async function listBoxesCompat(moveId: string): Promise<Box[]> {
+  return (
+    (await call("listBoxes", moveId)) ??
+    (await call("getBoxesByMoveId", moveId)) ??
+    []
+  );
+}
+
+async function listItemsInBoxCompat(boxId: string): Promise<Item[]> {
+  return (
+    (await call("listItemsInBox", boxId)) ??
+    (await call("getItemsByBoxId", boxId)) ??
+    []
+  );
+}
+
+async function createBoxCompat(moveId: string, payload: { name: string }): Promise<Box> {
+  return (
+    (await call("createBox", moveId, payload)) ??
+    (await call("addBox", moveId, payload.name)) ??
+    (await call("newBox", { moveId, name: payload.name }))
+  );
+}
+
+async function deleteBoxCompat(id: string) {
+  return (
+    (await call("deleteBox", id)) ??
+    (await call("removeBox", id)) ??
+    (await call("deleteBoxById", id)) ??
+    (await call("destroyBox", id))
+  );
+}
+
 export default function Boxes() {
   const { moveId } = useParams();
   const nav = useNavigate();
@@ -24,10 +64,10 @@ export default function Boxes() {
     let alive = true;
     (async () => {
       setLoading(true);
-      const list = (await Store.listBoxes(String(moveId))) || [];
+      const list = (await listBoxesCompat(String(moveId))) || [];
       const withCounts = await Promise.all(
         list.map(async (b) => {
-          const items = await Store.listItemsInBox(b.id);
+          const items = await listItemsInBoxCompat(b.id);
           return { ...b, itemCount: (items || []).length };
         })
       );
@@ -45,8 +85,7 @@ export default function Boxes() {
     const name = newName.trim();
     if (!name) return;
     setNewName("");
-    const created = await Store.createBox(String(moveId), { name });
-    // Go straight into the box you just created
+    const created = await createBoxCompat(String(moveId), { name });
     nav(`/moves/${moveId}/boxes/${created.id}`);
   }
 
@@ -59,12 +98,11 @@ export default function Boxes() {
 
   async function deleteBox(id: string) {
     if (!confirm("Delete this box?")) return;
-    await Store.deleteBox(id);
-    const remaining = (await Store.listBoxes(String(moveId))) || [];
-    // Recompute counts
+    await deleteBoxCompat(id);
+    const remaining = (await listBoxesCompat(String(moveId))) || [];
     const withCounts = await Promise.all(
       remaining.map(async (b) => {
-        const items = await Store.listItemsInBox(b.id);
+        const items = await listItemsInBoxCompat(b.id);
         return { ...b, itemCount: (items || []).length };
       })
     );
