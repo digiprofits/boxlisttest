@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import * as Store from "@/store";
 
 /* ───────── Types ───────── */
@@ -21,6 +21,70 @@ type Item = {
 
 const STATUS = ["Open", "Packed", "Sealed", "Unpacked"] as const;
 
+/* ───────── Store compat helpers (try multiple names) ───────── */
+async function call(name: string, ...args: any[]) {
+  const fn = (Store as any)[name];
+  if (typeof fn === "function") return await fn(...args);
+  return undefined;
+}
+
+async function getBoxByIdCompat(id: string): Promise<Box | undefined> {
+  return (
+    (await call("getBoxById", id)) ??
+    (await call("getBox", id)) ??
+    (async () => {
+      const all = ((await call("listBoxes")) || []) as Box[];
+      return all.find((b) => b.id === id);
+    })()
+  );
+}
+
+async function listItemsInBoxCompat(boxId: string): Promise<Item[]> {
+  return (
+    (await call("listItemsInBox", boxId)) ??
+    (await call("getItemsByBoxId", boxId)) ??
+    []
+  );
+}
+
+async function updateBoxCompat(id: string, patch: Partial<Box>) {
+  return (
+    (await call("updateBox", id, patch)) ??
+    (await call("saveBox", { id, ...patch })) ??
+    (await call("renameBox", id, patch.name))
+  );
+}
+
+async function addBoxImageCompat(id: string, dataUrl: string) {
+  return (
+    (await call("addBoxImage", id, dataUrl)) ??
+    (await call("appendBoxImage", id, dataUrl))
+  );
+}
+
+async function removeBoxImageCompat(id: string, src: string) {
+  return (
+    (await call("removeBoxImage", id, src)) ??
+    (await call("deleteBoxImage", id, src))
+  );
+}
+
+async function createItemCompat(payload: { boxId: string; name: string; notes?: string }) {
+  return (
+    (await call("createItem", payload)) ??
+    (await call("addItemToBox", payload.boxId, { name: payload.name, notes: payload.notes })) ??
+    (await call("addItem", payload.boxId, { name: payload.name, notes: payload.notes }))
+  );
+}
+
+async function updateItemCompat(id: string, patch: Partial<Item>) {
+  return (await call("updateItem", id, patch)) ?? (await call("saveItem", id, patch));
+}
+
+async function deleteItemCompat(id: string) {
+  return (await call("deleteItem", id)) ?? (await call("removeItem", id));
+}
+
 /* ───────── Component ───────── */
 export default function BoxDetail() {
   const { moveId, boxId } = useParams();
@@ -30,7 +94,7 @@ export default function BoxDetail() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Add item
+  // New item
   const [newItemName, setNewItemName] = useState("");
   const [newItemNotes, setNewItemNotes] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
@@ -40,15 +104,14 @@ export default function BoxDetail() {
   const [editName, setEditName] = useState("");
   const [editNotes, setEditNotes] = useState("");
 
-  // Load box + items
   useEffect(() => {
     let alive = true;
     (async () => {
       setLoading(true);
-      const b = await Store.getBoxById(String(boxId));
-      const its = await Store.listItemsInBox(String(boxId));
+      const b = await getBoxByIdCompat(String(boxId));
+      const its = await listItemsInBoxCompat(String(boxId));
       if (alive) {
-        setBox(b || null);
+        setBox(b ?? null);
         setItems((its || []).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
         setLoading(false);
       }
@@ -58,35 +121,30 @@ export default function BoxDetail() {
     };
   }, [boxId]);
 
-  const boxName = box?.name ?? "";
-
   function saveAndReturn() {
-    // No pending async to flush; all updates are applied on change/blur.
     nav(`/moves/${moveId}/boxes`);
   }
 
-  // Box name edits
   async function onNameBlur(e: React.FocusEvent<HTMLInputElement>) {
+    if (!box) return;
     const next = e.target.value.trim() || "Untitled";
-    if (!box || next === box.name) return;
-    await Store.updateBox(box.id, { name: next });
+    if (next === box.name) return;
+    await updateBoxCompat(box.id, { name: next });
     setBox({ ...box, name: next });
   }
 
-  // Status edits
   async function onStatusChange(next: string) {
     if (!box) return;
     const prev = box.status;
     setBox({ ...box, status: next });
     try {
-      await Store.updateBox(box.id, { status: next });
+      await updateBoxCompat(box.id, { status: next });
     } catch {
       setBox((b) => (b ? { ...b, status: prev } : b));
       alert("Could not update status. Try again.");
     }
   }
 
-  // Images
   function openImage(src: string) {
     window.open(src, "_blank");
   }
@@ -98,7 +156,7 @@ export default function BoxDetail() {
     const reader = new FileReader();
     reader.onload = async () => {
       const dataUrl = String(reader.result);
-      await Store.addBoxImage(box.id, dataUrl);
+      await addBoxImageCompat(box.id, dataUrl);
       setBox((b) => (b ? { ...b, images: [...(b.images || []), dataUrl] } : b));
     };
     reader.readAsDataURL(file);
@@ -107,11 +165,10 @@ export default function BoxDetail() {
 
   async function removeImage(src: string) {
     if (!box) return;
-    await Store.removeBoxImage(box.id, src);
+    await removeBoxImageCompat(box.id, src);
     setBox((b) => (b ? { ...b, images: (b.images || []).filter((s) => s !== src) } : b));
   }
 
-  // Items
   async function addItem() {
     if (!box) return;
     const name = newItemName.trim();
@@ -120,7 +177,10 @@ export default function BoxDetail() {
       nameRef.current?.focus();
       return;
     }
-    const created = await Store.createItem({ boxId: box.id, name, notes });
+    const created =
+      (await createItemCompat({ boxId: box.id, name, notes })) ||
+      { id: crypto.randomUUID(), boxId: box.id, name, notes, updatedAt: Date.now() };
+
     const now = Date.now();
     setItems((prev) => [{ ...created, updatedAt: now }, ...prev]);
     setNewItemName("");
@@ -147,7 +207,7 @@ export default function BoxDetail() {
       notes: (editNotes || "").trim(),
       updatedAt: Date.now(),
     };
-    await Store.updateItem(id, patch);
+    await updateItemCompat(id, patch);
     setItems((prev) =>
       prev
         .map((i) => (i.id === id ? { ...i, ...patch } : i))
@@ -158,7 +218,7 @@ export default function BoxDetail() {
 
   async function deleteItem(id: string) {
     if (!confirm("Delete this item?")) return;
-    await Store.deleteItem(id);
+    await deleteItemCompat(id);
     setItems((prev) => prev.filter((i) => i.id !== id));
   }
 
@@ -188,7 +248,7 @@ export default function BoxDetail() {
           <label className="block text-sm font-medium mb-1">Box name</label>
           <input
             className="input"
-            defaultValue={boxName}
+            defaultValue={box.name}
             onBlur={onNameBlur}
             placeholder="e.g., Kitchen #1"
           />
@@ -326,7 +386,7 @@ export default function BoxDetail() {
                             e.preventDefault();
                             saveEdit(it.id);
                           }
-                        })}
+                        }}
                       />
                     </div>
                     <div>
@@ -340,7 +400,7 @@ export default function BoxDetail() {
                             e.preventDefault();
                             saveEdit(it.id);
                           }
-                        })}
+                        }}
                       />
                     </div>
                     <div className="flex justify-end gap-2">
