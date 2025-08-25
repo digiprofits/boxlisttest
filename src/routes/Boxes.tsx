@@ -71,6 +71,7 @@ function BoxesList({ moveId }: { moveId: string }) {
 
     setNewName('');
 
+    // Try multiple store shapes
     let created: Box | undefined =
       (await call('addBox', moveId, name)) ||
       (await call('createBox', moveId, name)) ||
@@ -78,11 +79,13 @@ function BoxesList({ moveId }: { moveId: string }) {
       (await call('createBox', moveId, { name })) ||
       (await call('newBox', { moveId, name }));
 
+    // Last-resort: take the last box as "created"
     if (!created) {
       const list: Box[] = (await call('listBoxes', moveId)) || [];
       created = list[list.length - 1];
     }
 
+    // Ensure the name we typed sticks (some stores create "New Box" by default)
     if (created && created.name !== name) {
       await (
         call('updateBox', created.id, { name }) ??
@@ -107,6 +110,7 @@ function BoxesList({ moveId }: { moveId: string }) {
   async function deleteBox(id: string) {
     if (!confirm('Delete this box?')) return;
 
+    // Try common delete signatures
     await (
       call('deleteBox', id) ??
       call('removeBox', id) ??
@@ -114,14 +118,21 @@ function BoxesList({ moveId }: { moveId: string }) {
       call('destroyBox', id)
     );
 
-    // Hard verify deletion
+    // Verify deletion (Dexie fallback if store wrapper didn’t remove it)
     const still = ((await call('listBoxes', moveId)) || []).some((b: Box) => b.id === id);
     if (still) {
-      const anyStore: any = Store as any;
-      const db = anyStore.db || anyStore.dexie || anyStore._db;
       try {
-        if (db?.boxes?.delete) await db.boxes.delete(id);
-      } catch {}
+        const anyStore: any = Store as any;
+        const db = anyStore.db || anyStore.dexie || anyStore._db;
+        if (db?.items?.where && db?.items?.delete) {
+          await db.items.where('boxId').equals(id).delete();
+        }
+        if (db?.boxes?.delete) {
+          await db.boxes.delete(id);
+        }
+      } catch {
+        // ignore
+      }
     }
 
     const remaining: Box[] = (await call('listBoxes', moveId)) || [];
@@ -221,7 +232,6 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
   }, [moveId, boxId]);
 
   function saveAndReturn() {
-    // Simply navigate back to Boxes list for the move
     nav(`/moves/${moveId}/boxes`);
   }
 
@@ -344,7 +354,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Top-left Save & Return (replacing the old Back + "Box" title) */}
+      {/* Top-left Save & Return (no separate “Box” heading) */}
       <div className="flex items-center">
         <button className="btn btn-ghost" onClick={saveAndReturn} aria-label="Save and Return">
           ← Save and Return
