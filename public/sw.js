@@ -1,6 +1,6 @@
 // public/sw.js
-const SHELL = 'boxlister-shell-v1';
-const ASSETS = 'boxlister-assets-v1';
+const SHELL_CACHE = "boxlister-shell-v2";
+const ASSET_CACHE = "boxlister-assets-v2";
 
 self.addEventListener('install', (evt) => {
   evt.waitUntil(
