@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import * as Store from '@/store';
 
+/* ------------------------------- Types ------------------------------- */
 type Box = {
   id: string;
   name: string;
   moveId: string;
   status?: string;
   images?: string[];
+  itemCount?: number;
 };
 
 type Item = {
@@ -20,103 +22,227 @@ type Item = {
 
 const STATUS_OPTIONS = ['Open', 'Packed', 'Sealed', 'Unpacked'] as const;
 
-// Safe wrapper to call whatever the store exposes
+/* --------------------------- Store helper ---------------------------- */
 async function call(fn: string, ...args: any[]) {
   const f = (Store as any)[fn];
   if (typeof f === 'function') return await f(...args);
   return undefined;
 }
 
-export default function BoxView() {
-  const nav = useNavigate();
+/* =====================================================================
+
+  ROUTE SPLITTER
+  - /moves/:moveId/boxes            -> BoxesList
+  - /moves/:moveId/boxes/:boxId     -> BoxDetail
+
+===================================================================== */
+export default function BoxesRoute() {
   const { moveId, boxId } = useParams();
+  if (boxId) return <BoxDetail moveId={moveId!} boxId={boxId} />;
+  return <BoxesList moveId={moveId!} />;
+}
+
+/* =====================================================================
+
+  BOXES LIST
+
+===================================================================== */
+function BoxesList({ moveId }: { moveId: string }) {
+  const nav = useNavigate();
+
+  const [boxes, setBoxes] = useState<Box[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        const list: Box[] = (await call('listBoxes', moveId)) || [];
+        // If no itemCount field, compute quickly (fallback)
+        const withCounts = await Promise.all(
+          list.map(async (b) => {
+            if (typeof b.itemCount === 'number') return b;
+            const items: Item[] = (await call('listItemsInBox', b.id)) || [];
+            return { ...b, itemCount: items.length };
+          })
+        );
+        if (!alive) return;
+        setBoxes(withCounts);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    const t = setTimeout(() => alive && setLoading(false), 6000);
+    return () => {
+      alive = false;
+      clearTimeout(t);
+    };
+  }, [moveId]);
+
+  async function addBox() {
+    const name = newName.trim();
+    if (!name) return;
+    setNewName('');
+    // Try common store APIs
+    let created: Box | undefined =
+      (await call('createBox', moveId, name)) ||
+      (await call('addBox', moveId, { name })) ||
+      (await call('newBox', { moveId, name }));
+    // If the store doesn’t return, re-fetch
+    if (!created) {
+      const list: Box[] = (await call('listBoxes', moveId)) || [];
+      created = list.find((b) => b.name === name) || list[list.length - 1];
+    }
+    if (created) {
+      nav(`/moves/${moveId}/boxes/${created.id}`);
+    }
+  }
+
+  function onAddKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addBox();
+    }
+  }
+
+  async function deleteBox(id: string) {
+    if (!confirm('Delete this box?')) return;
+    await (call('removeBox', id) ?? call('deleteBox', id));
+    setBoxes((prev) => prev.filter((b) => b.id !== id));
+  }
+
+  if (loading) return <div className="p-4 text-neutral-600">Loading...</div>;
+
+  return (
+    <div className="space-y-6">
+      <h1 className="text-2xl font-bold">Boxes</h1>
+
+      <div className="card p-4 space-y-3">
+        <input
+          className="input"
+          placeholder="Box name (e.g., Kitchen #1)"
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={onAddKey}
+        />
+        <button className="btn btn-primary" onClick={addBox}>
+          Add Box (Enter)
+        </button>
+      </div>
+
+      {boxes.length === 0 ? (
+        <div className="card p-4 text-neutral-600">No boxes yet. Add one above.</div>
+      ) : (
+        <div className="space-y-3">
+          {boxes.map((b) => (
+            <div key={b.id} className="card p-4">
+              <div className="flex items-center justify-between gap-3">
+                <Link
+                  to={`/moves/${moveId}/boxes/${b.id}`}
+                  className="font-semibold hover:underline"
+                >
+                  {b.name}
+                </Link>
+                <div className="flex items-center gap-3">
+                  <span className="badge badge-sm">Items: {b.itemCount ?? 0}</span>
+                  <button className="btn btn-danger" onClick={() => deleteBox(b.id)}>
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* =====================================================================
+
+  BOX DETAIL
+
+===================================================================== */
+function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
+  const nav = useNavigate();
 
   const [box, setBox] = useState<Box | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Add-item form
+  // add-item form
   const [newName, setNewName] = useState('');
   const [newNotes, setNewNotes] = useState('');
   const nameRef = useRef<HTMLInputElement>(null);
 
-  // Inline edit
+  // inline edit
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
-  // ----------------- Load box + items (robust) -----------------
+  // ----- load box + items (robust) -----
   useEffect(() => {
     let alive = true;
-
     (async () => {
-      // Guard: no params → stop loading and show message
-      if (!moveId || !boxId) {
-        if (!alive) return;
-        setLoading(false);
-        setLoadError('No box selected.');
-        return;
-      }
-
       try {
         setLoading(true);
         setLoadError(null);
 
-        // Try to find the box
+        // Find box
         let found: Box | undefined;
-        const list = (await call('listBoxes', moveId)) as Box[] | undefined;
-        if (list) found = list.find((b) => b.id === boxId);
+        const list: Box[] = (await call('listBoxes', moveId)) || [];
+        found = list.find((b) => b.id === boxId);
         if (!found) found = (await call('getBox', boxId)) as Box | undefined;
         if (!found) found = (await call('getBoxById', boxId)) as Box | undefined;
 
         if (!alive) return;
         setBox(found ?? null);
 
-        // Load items for the box (if we have it)
+        // Items
         let loaded: Item[] = [];
         if (found) {
           loaded = (await call('listItemsInBox', boxId)) || [];
           loaded.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
         }
-
         if (!alive) return;
         setItems(loaded);
       } catch (err: any) {
         if (!alive) return;
         setLoadError(err?.message || 'Failed to load box.');
       } finally {
-        if (!alive) return;
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
 
-    // Safety: never let the loader sit forever
-    const timer = setTimeout(() => {
+    const t = setTimeout(() => {
       if (alive) setLoading(false);
     }, 6000);
 
     return () => {
       alive = false;
-      clearTimeout(timer);
+      clearTimeout(t);
     };
   }, [moveId, boxId]);
 
-  // ----------------- Actions -----------------
+  // ----- status -----
   async function onStatusChange(next: string) {
     if (!box) return;
+    const prev = box.status;
     setBox({ ...box, status: next }); // optimistic
     try {
       await call('updateBoxStatus', box.id, next) ??
         call('updateBox', box.id, { status: next }) ??
         call('saveBox', { ...box, status: next });
     } catch {
-      // revert if it fails
-      setBox((prev) => (prev ? { ...prev, status: box.status } : prev));
-      alert('Could not update status. Please try again.');
+      setBox((b) => (b ? { ...b, status: prev } : b));
+      alert('Could not update status. Try again.');
     }
   }
 
+  // ----- images -----
   function openImageFull(url: string) {
     window.open(url, '_blank');
   }
@@ -133,7 +259,7 @@ export default function BoxView() {
           prev ? { ...prev, images: [...(prev.images || []), dataUrl] } : prev,
         );
       } catch {
-        alert('Failed to add image. Please try again.');
+        alert('Failed to add image.');
       }
     };
     reader.readAsDataURL(file);
@@ -148,10 +274,11 @@ export default function BoxView() {
         prev ? { ...prev, images: (prev.images || []).filter((u) => u !== img) } : prev,
       );
     } catch {
-      alert('Failed to remove image. Please try again.');
+      alert('Failed to remove image.');
     }
   }
 
+  // ----- items: add / edit / delete -----
   async function addItem() {
     if (!box) return;
     const name = newName.trim();
@@ -167,7 +294,6 @@ export default function BoxView() {
         (await call('createItem', payload)) ||
         (await call('addItemToBox', box.id, { name, notes })) ||
         (await call('addItem', box.id, { name, notes }));
-
       if (!created) created = { id: crypto.randomUUID(), ...payload };
 
       setItems((prev) => [{ ...created! }, ...prev]);
@@ -175,7 +301,7 @@ export default function BoxView() {
       setNewNotes('');
       nameRef.current?.focus();
     } catch {
-      alert('Failed to add item. Please try again.');
+      alert('Failed to add item.');
     }
   }
 
@@ -193,11 +319,7 @@ export default function BoxView() {
   }
 
   async function saveEdit(id: string) {
-    const patch = {
-      name: editName.trim() || 'Untitled',
-      notes: editNotes.trim(),
-      updatedAt: Date.now(),
-    };
+    const patch = { name: editName.trim() || 'Untitled', notes: editNotes.trim(), updatedAt: Date.now() };
     try {
       await (call('updateItem', id, patch) ?? call('saveItem', id, patch));
       setItems((prev) =>
@@ -207,7 +329,7 @@ export default function BoxView() {
       );
       setEditingId(null);
     } catch {
-      alert('Failed to save item. Please try again.');
+      alert('Failed to save item.');
     }
   }
 
@@ -217,44 +339,39 @@ export default function BoxView() {
       await (call('removeItem', id) ?? call('deleteItem', id));
       setItems((prev) => prev.filter((it) => it.id !== id));
     } catch {
-      alert('Failed to delete item. Please try again.');
+      alert('Failed to delete item.');
     }
   }
 
+  // ----- Save button nav -----
   function saveAndExit() {
-    // Data is already auto-saved; this just navigates.
-    if (moveId) nav(`/moves/${moveId}/boxes`);
-    else nav(-1);
+    nav(`/moves/${moveId}/boxes`);
   }
 
-  // ----------------- Render -----------------
-  if (loading) {
-    return <div className="text-neutral-600 p-4">Loading...</div>;
-  }
-  if (loadError) {
+  // ----- render -----
+  if (loading) return <div className="p-4 text-neutral-600">Loading...</div>;
+  if (loadError)
     return (
       <div className="p-4 space-y-3">
         <div className="text-red-600 font-medium">{loadError}</div>
-        <button className="btn btn-primary" onClick={() => (moveId ? nav(`/moves/${moveId}/boxes`) : nav(-1))}>
-          Go back
-        </button>
-      </div>
-    );
-  }
-  if (!box) {
-    return (
-      <div className="p-4 space-y-3">
-        <div className="text-neutral-600">Box not found.</div>
-        <button className="btn btn-primary" onClick={() => (moveId ? nav(`/moves/${moveId}/boxes`) : nav(-1))}>
+        <button className="btn btn-primary" onClick={() => nav(`/moves/${moveId}/boxes`)}>
           Back to Boxes
         </button>
       </div>
     );
-  }
+  if (!box)
+    return (
+      <div className="p-4 space-y-3">
+        <div className="text-neutral-600">Box not found.</div>
+        <button className="btn btn-primary" onClick={() => nav(`/moves/${moveId}/boxes`)}>
+          Back to Boxes
+        </button>
+      </div>
+    );
 
   return (
     <div className="space-y-6">
-      {/* Header row */}
+      {/* Header with Save on the right */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button className="btn btn-ghost" onClick={() => nav(-1)} aria-label="Back">
@@ -273,6 +390,7 @@ export default function BoxView() {
           <h2 className="text-xl sm:text-2xl font-bold">{box.name}</h2>
         </div>
 
+        {/* Status */}
         <div>
           <div className="text-neutral-600 mb-1">Status</div>
           <select
@@ -288,6 +406,7 @@ export default function BoxView() {
           </select>
         </div>
 
+        {/* Images */}
         <div>
           <div className="text-neutral-600 mb-2">Box Images</div>
           {box.images && box.images.length > 0 ? (
@@ -343,7 +462,6 @@ export default function BoxView() {
             onKeyDown={onNameKey}
           />
         </div>
-
         <div>
           <label className="block text-sm font-medium mb-1">Notes (optional)</label>
           <input
@@ -359,7 +477,6 @@ export default function BoxView() {
             }}
           />
         </div>
-
         <div>
           <button className="btn btn-primary" onClick={addItem}>
             Add Item (Enter)
