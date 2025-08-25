@@ -1,246 +1,363 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
-import {
-  createItem, listBoxes, listItemsInBox, moveItemToBox,
-  updateBox, updateItem, deleteItem, useUI, reorderItems
-} from '@/store';
-import InlineEditable from '@/components/InlineEditable';
-import StatusSelect from '@/components/StatusSelect';
-import ImagePicker from '@/components/ImagePicker';
-import Modal from '@/components/Modal';
-import Toasts, { useToasts } from '@/components/Toasts';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
+import * as Store from "@/store";
 
-type EditDraft = { id: string; name: string; notes: string; boxId: string };
+/* ───────── Types ───────── */
+type Box = {
+  id: string;
+  moveId: string;
+  name: string;
+  status?: string;
+  images?: string[];
+};
 
-export default function BoxDetail(){
+type Item = {
+  id: string;
+  boxId: string;
+  name: string;
+  notes?: string;
+  updatedAt?: number;
+};
+
+const STATUS = ["Open", "Packed", "Sealed", "Unpacked"] as const;
+
+/* ───────── Component ───────── */
+export default function BoxDetail() {
   const { moveId, boxId } = useParams();
   const nav = useNavigate();
-  const { setCurrentMove } = useUI();
 
-  const [box, setBox] = useState<any>(null);
-  const [boxes, setBoxes] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
-  const [viewer, setViewer] = useState<string|null>(null);
+  const [box, setBox] = useState<Box | null>(null);
+  const [items, setItems] = useState<Item[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const formRef = useRef<HTMLFormElement>(null);
+  // Add item
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemNotes, setNewItemNotes] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
-  const notesRef = useRef<HTMLInputElement>(null);
-  const { toasts, push } = useToasts();
 
-  const [draggingId, setDraggingId] = useState<string|null>(null);
-  const [editing, setEditing] = useState<EditDraft|null>(null);
+  // Edit item
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
-  useEffect(()=>{ if(moveId) setCurrentMove(moveId); }, [moveId]);
+  // Load box + items
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      const b = await Store.getBoxById(String(boxId));
+      const its = await Store.listItemsInBox(String(boxId));
+      if (alive) {
+        setBox(b || null);
+        setItems((its || []).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)));
+        setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [boxId]);
 
-  async function refresh(){
-    const bx = await listBoxes(moveId!);
-    setBoxes(bx);
-    setBox(bx.find(x => x.id === boxId));
-    setItems(await listItemsInBox(boxId!));
-  }
-  useEffect(()=>{ refresh(); }, [moveId, boxId]);
+  const boxName = box?.name ?? "";
 
-  async function addItem(e: React.FormEvent<HTMLFormElement>){
-    e.preventDefault();
-    const name = nameRef.current!.value.trim();
-    if(!name) return;
-    const notes = notesRef.current!.value.trim();
-    await createItem(moveId!, boxId!, { name, notes });
-    push('Item added');
-    nameRef.current!.value = '';
-    notesRef.current!.value = '';
-    nameRef.current?.focus();   // quick entry loop
-    refresh();
-  }
-
-  async function handleDrop(targetId: string){
-    if(!draggingId || draggingId===targetId) return;
-    const ids = items.map((it:any)=> it.id);
-    const from = ids.indexOf(draggingId);
-    const to = ids.indexOf(targetId);
-    ids.splice(to, 0, ids.splice(from, 1)[0]);
-    await reorderItems(ids);
-    setDraggingId(null);
-    refresh();
+  function saveAndReturn() {
+    // No pending async to flush; all updates are applied on change/blur.
+    nav(`/moves/${moveId}/boxes`);
   }
 
-  function startEdit(it:any){ setEditing({ id: it.id, name: it.name, notes: it.notes || '', boxId: it.boxId }); }
-  function cancelEdit(){ setEditing(null); }
-
-  async function saveEdit(){
-    if(!editing) return;
-    await updateItem(editing.id, { name: editing.name.trim(), notes: editing.notes.trim() });
-    await moveItemToBox(editing.id, editing.boxId);
-    push('Item updated');
-    setEditing(null);
-    refresh();
+  // Box name edits
+  async function onNameBlur(e: React.FocusEvent<HTMLInputElement>) {
+    const next = e.target.value.trim() || "Untitled";
+    if (!box || next === box.name) return;
+    await Store.updateBox(box.id, { name: next });
+    setBox({ ...box, name: next });
   }
 
-  async function removeItem(id:string){
-    if(confirm('Delete item?')){
-      await deleteItem(id);
-      push('Item deleted');
-      refresh();
+  // Status edits
+  async function onStatusChange(next: string) {
+    if (!box) return;
+    const prev = box.status;
+    setBox({ ...box, status: next });
+    try {
+      await Store.updateBox(box.id, { status: next });
+    } catch {
+      setBox((b) => (b ? { ...b, status: prev } : b));
+      alert("Could not update status. Try again.");
     }
   }
 
-  async function onStatusChange(next:any){
-    if(!box) return;
-    await updateBox(box.id, { status: next });
-    setBox((prev:any)=> prev ? { ...prev, status: next } : prev);
-    push('Status updated');
+  // Images
+  function openImage(src: string) {
+    window.open(src, "_blank");
   }
+
+  async function onPickImage(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!box) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      await Store.addBoxImage(box.id, dataUrl);
+      setBox((b) => (b ? { ...b, images: [...(b.images || []), dataUrl] } : b));
+    };
+    reader.readAsDataURL(file);
+    e.currentTarget.value = "";
+  }
+
+  async function removeImage(src: string) {
+    if (!box) return;
+    await Store.removeBoxImage(box.id, src);
+    setBox((b) => (b ? { ...b, images: (b.images || []).filter((s) => s !== src) } : b));
+  }
+
+  // Items
+  async function addItem() {
+    if (!box) return;
+    const name = newItemName.trim();
+    const notes = newItemNotes.trim();
+    if (!name) {
+      nameRef.current?.focus();
+      return;
+    }
+    const created = await Store.createItem({ boxId: box.id, name, notes });
+    const now = Date.now();
+    setItems((prev) => [{ ...created, updatedAt: now }, ...prev]);
+    setNewItemName("");
+    setNewItemNotes("");
+    nameRef.current?.focus();
+  }
+
+  function onNewItemNameKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addItem();
+    }
+  }
+
+  function startEdit(it: Item) {
+    setEditingId(it.id);
+    setEditName(it.name);
+    setEditNotes(it.notes || "");
+  }
+
+  async function saveEdit(id: string) {
+    const patch = {
+      name: (editName || "").trim() || "Untitled",
+      notes: (editNotes || "").trim(),
+      updatedAt: Date.now(),
+    };
+    await Store.updateItem(id, patch);
+    setItems((prev) =>
+      prev
+        .map((i) => (i.id === id ? { ...i, ...patch } : i))
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+    );
+    setEditingId(null);
+  }
+
+  async function deleteItem(id: string) {
+    if (!confirm("Delete this item?")) return;
+    await Store.deleteItem(id);
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  if (loading) return <div className="p-4 text-neutral-600">Loading...</div>;
+  if (!box)
+    return (
+      <div className="p-4 space-y-3">
+        <div className="text-neutral-600">Box not found.</div>
+        <button className="btn btn-primary" onClick={() => nav(`/moves/${moveId}/boxes`)}>
+          Back to Boxes
+        </button>
+      </div>
+    );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link to={`/moves/${moveId}/boxes`} className="btn btn-ghost btn-sm">← Back</Link>
-          <h1 className="text-xl sm:text-2xl font-bold">Box</h1>
-        </div>
+      {/* Top-left: Save and Return (replaces old Back + 'Box') */}
+      <div className="flex items-center">
+        <button className="btn btn-ghost" onClick={saveAndReturn} aria-label="Save and Return">
+          ← Save and Return
+        </button>
       </div>
 
-      {box && (
-        <div className="card p-3 sm:p-4 space-y-3">
-          <InlineEditable value={box.name} onSave={v=>updateBox(box.id, { name: v })} className="text-xl font-semibold" />
-          <StatusSelect value={box.status} onChange={onStatusChange} />
+      {/* Box header + status + images */}
+      <div className="card p-4 space-y-4">
+        <div>
+          <label className="block text-sm font-medium mb-1">Box name</label>
+          <input
+            className="input"
+            defaultValue={boxName}
+            onBlur={onNameBlur}
+            placeholder="e.g., Kitchen #1"
+          />
+        </div>
+
+        <div>
+          <div className="text-neutral-600 mb-1">Status</div>
+          <select
+            className="input"
+            value={box.status || "Open"}
+            onChange={(e) => onStatusChange(e.target.value)}
+          >
+            {STATUS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <div className="text-neutral-600 mb-2">Box Images</div>
+          {box.images?.length ? (
+            <div className="flex flex-wrap gap-3">
+              {box.images.map((src) => (
+                <div key={src} className="relative">
+                  <img
+                    src={src}
+                    alt=""
+                    className="h-28 w-28 rounded-xl object-cover border border-neutral-200"
+                    onClick={() => openImage(src)}
+                  />
+                  <button
+                    className="btn btn-ghost btn-icon absolute -top-2 -right-2 bg-white/90"
+                    onClick={() => removeImage(src)}
+                    aria-label="Remove image"
+                    title="Remove"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-neutral-500">No images yet.</div>
+          )}
 
           <div className="mt-2">
-            <div className="font-medium mb-2">Box Images</div>
-            {box.images?.length ? (
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {box.images.map((src:string, i:number)=> (
-                  <div key={i} className="relative">
-                    <img
-                      src={src}
-                      alt=""
-                      className="h-24 w-full object-cover rounded-xl border cursor-zoom-in"
-                      onClick={()=>setViewer(src)}
-                    />
-                    <button
-                      className="absolute top-1 right-1 bg-white/90 rounded-lg px-2 py-1 text-xs"
-                      onClick={async (e)=>{
-                        e.stopPropagation();
-                        const imgs = box.images.filter((_:any, idx:number)=> idx!==i);
-                        await updateBox(box.id, { images: imgs });
-                        push('Image removed'); refresh();
-                      }}
-                    >✕</button>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-sm text-neutral-500">No images yet.</div>
-            )}
-            <div className="mt-2">
-              <ImagePicker onSave={async (url)=>{ const imgs=[...(box.images||[]), url]; await updateBox(box.id, { images: imgs }); push('Image saved'); refresh(); }} />
-            </div>
+            <label className="btn btn-ghost cursor-pointer">
+              Add Images
+              <input
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={onPickImage}
+              />
+            </label>
           </div>
-        </div>
-      )}
-
-      <div className="card p-3 sm:p-4">
-        <form ref={formRef} onSubmit={addItem} className="flex flex-wrap items-end gap-2">
-          <div className="flex-1 min-w-[220px]">
-            <label className="text-sm text-neutral-600">Item name</label>
-            <input
-              ref={nameRef}
-              className="input input-sm"
-              placeholder="e.g., Plates"
-              enterKeyHint="done"
-              onKeyDown={(e)=>{
-                if(e.key==='Enter'){ e.preventDefault(); formRef.current?.requestSubmit(); }
-              }}
-              onKeyUp={(e)=>{
-                if(e.key==='Enter'){ e.preventDefault(); }
-              }}
-            />
-          </div>
-          <div className="flex-1 min-w-[220px]">
-            <label className="text-sm text-neutral-600">Notes (optional)</label>
-            <input
-              ref={notesRef}
-              className="input input-sm"
-              placeholder="Glass / fragile"
-              enterKeyHint="done"
-              onKeyDown={(e)=>{
-                if(e.key==='Enter'){ e.preventDefault(); formRef.current?.requestSubmit(); }
-              }}
-            />
-          </div>
-          <button className="btn btn-primary btn-sm" type="submit">Add Item (Enter)</button>
-        </form>
-
-        <div className="mt-4 divide-y">
-          {items.map(it => (
-            <div key={it.id} className="py-3">
-              <div
-                className="flex items-center gap-3"
-                draggable
-                onDragStart={()=>setDraggingId(it.id)}
-                onDragOver={(e)=>e.preventDefault()}
-                onDrop={()=>handleDrop(it.id)}
-              >
-                <span className="cursor-grab select-none">☰</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{it.name}</div>
-                  {it.notes && <div className="text-sm text-neutral-600 truncate">{it.notes}</div>}
-                </div>
-                <button className="btn btn-ghost btn-sm" onClick={()=>setEditing({ id: it.id, name: it.name, notes: it.notes || '', boxId: it.boxId })}>Edit</button>
-                <button className="btn btn-danger btn-sm" onClick={()=>removeItem(it.id)}>Delete</button>
-              </div>
-
-              {editing?.id === it.id && (
-                <div className="mt-3 rounded-xl border p-3 bg-neutral-50">
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="block text-sm">
-                      <span className="text-neutral-600">Name</span>
-                      <input
-                        className="input input-sm mt-1"
-                        value={editing.name}
-                        onChange={e=>setEditing({...editing, name: e.target.value})}
-                      />
-                    </label>
-                    <label className="block text-sm">
-                      <span className="text-neutral-600">Box</span>
-                      <select
-                        className="input input-sm mt-1"
-                        value={editing.boxId}
-                        onChange={e=>setEditing({...editing, boxId: e.target.value})}
-                      >
-                        {boxes.map((b:any)=> <option key={b.id} value={b.id}>{b.name}</option>)}
-                      </select>
-                    </label>
-                    <label className="block text-sm sm:col-span-2">
-                      <span className="text-neutral-600">Notes</span>
-                      <input
-                        className="input input-sm mt-1"
-                        value={editing.notes}
-                        onChange={e=>setEditing({...editing, notes: e.target.value})}
-                        placeholder="Notes (optional)"
-                      />
-                    </label>
-                  </div>
-                  <div className="mt-3 flex justify-end gap-2">
-                    <button className="btn btn-ghost btn-sm" onClick={cancelEdit}>Cancel</button>
-                    <button className="btn btn-primary btn-sm" onClick={saveEdit}>Save</button>
-                    <button className="btn btn-danger btn-sm" onClick={()=>removeItem(it.id)}>Delete</button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-          {items.length === 0 && (
-            <div className="py-8 text-center text-neutral-500">No items yet. Add your first item above.</div>
-          )}
         </div>
       </div>
 
-      <Modal open={!!viewer} onClose={()=>setViewer(null)} title="Image">
-        {viewer && <img src={viewer} alt="Full size" className="max-h-[75vh] w-full object-contain rounded-xl border" />}
-      </Modal>
+      {/* Add item */}
+      <div className="card p-4 space-y-3">
+        <div>
+          <label className="block text-sm font-medium mb-1">Item name</label>
+          <input
+            ref={nameRef}
+            className="input"
+            placeholder="e.g., Plates"
+            value={newItemName}
+            onChange={(e) => setNewItemName(e.target.value)}
+            onKeyDown={onNewItemNameKey}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium mb-1">Notes (optional)</label>
+          <input
+            className="input"
+            placeholder="Glass / fragile"
+            value={newItemNotes}
+            onChange={(e) => setNewItemNotes(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                addItem();
+              }
+            }}
+          />
+        </div>
+        <div>
+          <button className="btn btn-primary" onClick={addItem}>
+            Add Item (Enter)
+          </button>
+        </div>
+      </div>
 
-      <Toasts toasts={toasts} />
+      {/* Items list */}
+      <div className="space-y-3">
+        {items.length === 0 ? (
+          <div className="card p-4 text-neutral-600">No items yet. Add your first item above.</div>
+        ) : (
+          items.map((it) => {
+            const isEditing = editingId === it.id;
+            return (
+              <div key={it.id} className="card p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="shrink-0 text-neutral-500">≡</div>
+                    <div className="font-semibold truncate">{it.name}</div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => (isEditing ? setEditingId(null) : startEdit(it))}
+                    >
+                      Edit
+                    </button>
+                    <button className="btn btn-danger" onClick={() => deleteItem(it.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
+                {isEditing && (
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Item name</label>
+                      <input
+                        className="input"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            saveEdit(it.id);
+                          }
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Notes (optional)</label>
+                      <input
+                        className="input"
+                        value={editNotes}
+                        onChange={(e) => setEditNotes(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            saveEdit(it.id);
+                          }
+                        })}
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button className="btn btn-ghost" onClick={() => setEditingId(null)}>
+                        Cancel
+                      </button>
+                      <button className="btn btn-primary" onClick={() => saveEdit(it.id)}>
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }
