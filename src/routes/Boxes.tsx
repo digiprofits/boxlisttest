@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import * as Store from '@/store';
 
 /* ------------------------------- Types ------------------------------- */
@@ -32,8 +32,6 @@ async function call(fn: string, ...args: any[]) {
 /* =====================================================================
 
   ROUTE SPLITTER
-  - /moves/:moveId/boxes            -> BoxesList
-  - /moves/:moveId/boxes/:boxId     -> BoxDetail
 
 ===================================================================== */
 export default function BoxesRoute() {
@@ -60,7 +58,6 @@ function BoxesList({ moveId }: { moveId: string }) {
       try {
         setLoading(true);
         const list: Box[] = (await call('listBoxes', moveId)) || [];
-        // If no itemCount field, compute quickly (fallback)
         const withCounts = await Promise.all(
           list.map(async (b) => {
             if (typeof b.itemCount === 'number') return b;
@@ -82,21 +79,38 @@ function BoxesList({ moveId }: { moveId: string }) {
   }, [moveId]);
 
   async function addBox() {
-    const name = newName.trim();
-    if (!name) return;
+    const desired = newName.trim();
+    if (!desired) return;
+
     setNewName('');
-    // Try common store APIs
+
+    // Try common store signatures (prefer ones that accept the name)
     let created: Box | undefined =
-      (await call('createBox', moveId, name)) ||
-      (await call('addBox', moveId, { name })) ||
-      (await call('newBox', { moveId, name }));
-    // If the store doesn’t return, re-fetch
+      (await call('addBox', moveId, desired)) || // addBox(moveId, name)
+      (await call('createBox', moveId, desired)) || // createBox(moveId, name)
+      (await call('addBox', moveId, { name: desired })) || // addBox(moveId, {name})
+      (await call('createBox', moveId, { name: desired })) || // createBox(moveId, {name})
+      (await call('newBox', { moveId, name: desired })); // newBox({moveId,name})
+
+    // Fallback: if nothing returned, re-list and pick the newest
     if (!created) {
       const list: Box[] = (await call('listBoxes', moveId)) || [];
-      created = list.find((b) => b.name === name) || list[list.length - 1];
+      created = list[list.length - 1];
     }
+
+    // If store gave a default like "New Box", immediately patch the name
+    if (created && created.name !== desired) {
+      await (
+        call('updateBox', created.id, { name: desired }) ??
+        call('renameBox', created.id, desired) ??
+        call('saveBox', { ...created, name: desired })
+      );
+      created = { ...created, name: desired };
+    }
+
     if (created) {
-      nav(`/moves/${moveId}/boxes/${created.id}`);
+      // Pass the intended name as route state too (defensive)
+      nav(`/moves/${moveId}/boxes/${created.id}`, { state: { name: desired } });
     }
   }
 
@@ -167,6 +181,7 @@ function BoxesList({ moveId }: { moveId: string }) {
 ===================================================================== */
 function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
   const nav = useNavigate();
+  const location = useLocation() as { state?: { name?: string } };
 
   const [box, setBox] = useState<Box | null>(null);
   const [items, setItems] = useState<Item[]>([]);
@@ -183,7 +198,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
   const [editName, setEditName] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
-  // ----- load box + items (robust) -----
+  // ----- load box + items -----
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -191,12 +206,23 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
         setLoading(true);
         setLoadError(null);
 
-        // Find box
+        // Find box (prefer listBoxes for move)
         let found: Box | undefined;
         const list: Box[] = (await call('listBoxes', moveId)) || [];
         found = list.find((b) => b.id === boxId);
         if (!found) found = (await call('getBox', boxId)) as Box | undefined;
         if (!found) found = (await call('getBoxById', boxId)) as Box | undefined;
+
+        // If we navigated with intended name, show that while store catches up
+        if (!found && location.state?.name) {
+          found = {
+            id: boxId,
+            moveId,
+            name: location.state.name,
+            status: 'Open',
+            images: [],
+          } as Box;
+        }
 
         if (!alive) return;
         setBox(found ?? null);
@@ -225,13 +251,13 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
       alive = false;
       clearTimeout(t);
     };
-  }, [moveId, boxId]);
+  }, [moveId, boxId, location.state?.name]);
 
   // ----- status -----
   async function onStatusChange(next: string) {
     if (!box) return;
     const prev = box.status;
-    setBox({ ...box, status: next }); // optimistic
+    setBox({ ...box, status: next }); // optimistic UI
     try {
       await call('updateBoxStatus', box.id, next) ??
         call('updateBox', box.id, { status: next }) ??
@@ -343,7 +369,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     }
   }
 
-  // ----- Save button nav -----
+  // ----- Save button -----
   function saveAndExit() {
     nav(`/moves/${moveId}/boxes`);
   }
@@ -371,17 +397,19 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Header with Save on the right */}
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <button className="btn btn-ghost" onClick={() => nav(-1)} aria-label="Back">
-            ← Back
+      {/* Sticky header with Save on the right */}
+      <div className="sticky top-0 z-10 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60 py-2">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button className="btn btn-ghost" onClick={() => nav(-1)} aria-label="Back">
+              ← Back
+            </button>
+            <h1 className="text-2xl font-bold">Box</h1>
+          </div>
+          <button className="btn btn-primary" onClick={saveAndExit}>
+            Save
           </button>
-          <h1 className="text-2xl font-bold">Box</h1>
         </div>
-        <button className="btn btn-primary" onClick={saveAndExit}>
-          Save
-        </button>
       </div>
 
       {/* Box card */}
@@ -417,7 +445,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
                     src={src}
                     alt=""
                     className="h-28 w-28 rounded-xl object-cover border border-neutral-200"
-                    onClick={() => openImageFull(src)}
+                    onClick={() => window.open(src, '_blank')}
                   />
                   <button
                     className="btn btn-ghost btn-icon absolute -top-2 -right-2 bg-white/90"
