@@ -114,14 +114,13 @@ function BoxesList({ moveId }: { moveId: string }) {
       call('destroyBox', id)
     );
 
+    // Hard verify deletion
     const still = ((await call('listBoxes', moveId)) || []).some((b: Box) => b.id === id);
     if (still) {
       const anyStore: any = Store as any;
       const db = anyStore.db || anyStore.dexie || anyStore._db;
       try {
-        if (db?.boxes?.delete) {
-          await db.boxes.delete(id);
-        }
+        if (db?.boxes?.delete) await db.boxes.delete(id);
       } catch {}
     }
 
@@ -221,7 +220,8 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     };
   }, [moveId, boxId]);
 
-  function saveAndExit() {
+  function saveAndReturn() {
+    // Simply navigate back to Boxes list for the move
     nav(`/moves/${moveId}/boxes`);
   }
 
@@ -344,20 +344,16 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Back + title */}
-      <div className="flex items-center gap-3">
-        <button className="btn btn-ghost" onClick={() => nav(-1)} aria-label="Back">
-          ← Back
+      {/* Top-left Save & Return (replacing the old Back + "Box" title) */}
+      <div className="flex items-center">
+        <button className="btn btn-ghost" onClick={saveAndReturn} aria-label="Save and Return">
+          ← Save and Return
         </button>
-        <h1 className="text-2xl font-bold">Box</h1>
       </div>
 
-      {/* Box header card with SAVE on the right */}
+      {/* Box header card */}
       <div className="card p-4 space-y-4">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xl sm:text-2xl font-bold">{box.name}</h2>
-          <button className="btn btn-primary" onClick={saveAndExit}>Save</button>
-        </div>
+        <h2 className="text-xl sm:text-2xl font-bold">{box.name}</h2>
 
         {/* Status */}
         <div>
