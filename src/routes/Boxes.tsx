@@ -71,7 +71,6 @@ function BoxesList({ moveId }: { moveId: string }) {
 
     setNewName('');
 
-    // Try common store signatures to create the box
     let created: Box | undefined =
       (await call('addBox', moveId, name)) ||
       (await call('createBox', moveId, name)) ||
@@ -79,13 +78,11 @@ function BoxesList({ moveId }: { moveId: string }) {
       (await call('createBox', moveId, { name })) ||
       (await call('newBox', { moveId, name }));
 
-    // As a fallback, fetch the most recent box from store
     if (!created) {
       const list: Box[] = (await call('listBoxes', moveId)) || [];
       created = list[list.length - 1];
     }
 
-    // Ensure the name sticks if store defaulted to "New Box"
     if (created && created.name !== name) {
       await (
         call('updateBox', created.id, { name }) ??
@@ -110,7 +107,6 @@ function BoxesList({ moveId }: { moveId: string }) {
   async function deleteBox(id: string) {
     if (!confirm('Delete this box?')) return;
 
-    // Try the usual APIs
     await (
       call('deleteBox', id) ??
       call('removeBox', id) ??
@@ -118,7 +114,6 @@ function BoxesList({ moveId }: { moveId: string }) {
       call('destroyBox', id)
     );
 
-    // Verify deletion; if it still exists, try Dexie fallback
     const still = ((await call('listBoxes', moveId)) || []).some((b: Box) => b.id === id);
     if (still) {
       const anyStore: any = Store as any;
@@ -127,12 +122,9 @@ function BoxesList({ moveId }: { moveId: string }) {
         if (db?.boxes?.delete) {
           await db.boxes.delete(id);
         }
-      } catch {
-        // ignore; last resort only
-      }
+      } catch {}
     }
 
-    // Update UI
     const remaining: Box[] = (await call('listBoxes', moveId)) || [];
     setBoxes(remaining);
   }
@@ -229,12 +221,10 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     };
   }, [moveId, boxId]);
 
-  /* ────────── Save button (just navigates back) ────────── */
   function saveAndExit() {
     nav(`/moves/${moveId}/boxes`);
   }
 
-  /* ────────── Status + Images ────────── */
   async function onStatusChange(next: string) {
     if (!box) return;
     const prev = box.status;
@@ -286,7 +276,6 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     }
   }
 
-  /* ────────── Items (add/edit/delete) ────────── */
   async function addItem() {
     if (!box) return;
     const name = newItemName.trim();
@@ -355,20 +344,20 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Top toolbar: Back + Save (always visible) */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <button className="btn btn-ghost" onClick={() => nav(-1)} aria-label="Back">
-            ← Back
-          </button>
-          <h1 className="text-2xl font-bold">Box</h1>
-        </div>
-        <button className="btn btn-primary" onClick={saveAndExit}>Save</button>
+      {/* Back + title */}
+      <div className="flex items-center gap-3">
+        <button className="btn btn-ghost" onClick={() => nav(-1)} aria-label="Back">
+          ← Back
+        </button>
+        <h1 className="text-2xl font-bold">Box</h1>
       </div>
 
-      {/* Box header card */}
+      {/* Box header card with SAVE on the right */}
       <div className="card p-4 space-y-4">
-        <h2 className="text-xl sm:text-2xl font-bold">{box.name}</h2>
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-xl sm:text-2xl font-bold">{box.name}</h2>
+          <button className="btn btn-primary" onClick={saveAndExit}>Save</button>
+        </div>
 
         {/* Status */}
         <div>
