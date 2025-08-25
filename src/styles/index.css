@@ -2,34 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Theme tokens */
 :root { --radius: 1.25rem; }
 
-.card { @apply bg-white rounded-2xl shadow-soft border border-neutral-200; }
-.btn { @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium transition; }
-.btn-primary { @apply btn bg-blue-600 text-white hover:bg-blue-700; }
-.btn-ghost { @apply btn bg-transparent hover:bg-neutral-100; }
-.btn-danger { @apply btn bg-red-600 text-white hover:bg-red-700; }
-.input { @apply w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600; }
+/* Cards & badges */
+.card  { @apply bg-white rounded-2xl shadow-soft border border-neutral-200; }
 .badge { @apply inline-flex items-center gap-1 rounded-full border px-2 py-1 text-xs font-medium; }
-
-.btn-sm { @apply px-3 py-1.5 text-sm rounded-lg; }
-.input-sm { @apply px-2.5 py-1.5 text-sm rounded-lg; }
 .badge-sm { @apply text-xs px-2 py-0.5 rounded-full; }
 
-.btn-icon { @apply rounded-lg p-2 w-9 h-9 inline-flex items-center justify-center; }
+/* Buttons */
+.btn         { @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium transition text-base; }
+.btn-primary { @apply btn bg-blue-600 text-white hover:bg-blue-700; }
+.btn-ghost   { @apply btn bg-transparent hover:bg-neutral-100; }
+.btn-danger  { @apply btn bg-red-600 text-white hover:bg-red-700; }
+.btn-sm      { @apply px-3 py-1.5 rounded-lg text-base; }          /* keep 16px to avoid iOS zoom */
+.btn-icon    { @apply rounded-lg p-2 w-9 h-9 inline-flex items-center justify-center; }
 .icon { width: 1.1rem; height: 1.1rem; }
 
-.no-scrollbar::-webkit-scrollbar { display: none; }
-.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+/* Inputs */
+.input    { @apply w-full rounded-xl border border-neutral-300 bg-white px-3 py-2 outline-none focus:ring-2 focus:ring-blue-600 text-base; }
+.input-sm { @apply px-2.5 py-1.5 rounded-lg; }                     /* smaller padding, keep default 16px font */
 
+/* Tabs */
 .tab { @apply px-3 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-colors; }
 .tab:hover { @apply bg-neutral-100; }
 .tab-active { @apply bg-blue-600 text-white; }
 .tab-active:hover, .tab-active:focus, .tab-active:active { @apply bg-blue-600 text-white; }
+
+/* Utilities */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
 @media print {
   .no-print{display:none!important}
   .label-card{page-break-inside:avoid;break-inside:avoid;}
+}
+
+/* ---- iOS Safari zoom-on-focus fix ----
+   iOS auto-zooms focused controls if computed font-size < 16px.
+   We enforce >=16px on all interactive controls.
+*/
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+  }
 }
