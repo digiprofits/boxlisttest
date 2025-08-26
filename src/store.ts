@@ -314,3 +314,78 @@ export async function removeItem(id: string) {
 export async function deleteItem(id: string) {
   await db.items.delete(id);
 }
+
+/* ---------------- EXPORT / IMPORT (Settings.tsx) ---------------- */
+type ExportBundle = {
+  version: number;
+  exportedAt: number;
+  data: {
+    moves: MoveRecord[];
+    rooms: RoomRecord[];
+    boxes: BoxRecord[];
+    items: ItemRecord[];
+  };
+};
+
+/** Export all data as a JSON string (pretty-printed) */
+export async function exportJSON(): Promise<string> {
+  const [moves, rooms, boxes, items] = await Promise.all([
+    db.moves.toArray(),
+    db.rooms.toArray(),
+    db.boxes.toArray(),
+    db.items.toArray(),
+  ]);
+  const bundle: ExportBundle = {
+    version: 2,
+    exportedAt: Date.now(),
+    data: { moves, rooms, boxes, items },
+  };
+  return JSON.stringify(bundle, null, 2);
+}
+
+/**
+ * Import data from a JSON string or object.
+ * mode = 'replace' (default) clears existing data before import.
+ * mode = 'merge' upserts by id (keeps existing when ids match).
+ */
+export async function importJSON(
+  payload: string | Partial<ExportBundle>,
+  opts: { mode?: 'replace' | 'merge' } = {}
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const mode = opts.mode ?? 'replace';
+  let parsed: Partial<ExportBundle>;
+  try {
+    parsed = typeof payload === 'string' ? JSON.parse(payload) : payload;
+  } catch (e) {
+    return { ok: false, error: 'INVALID_JSON' };
+  }
+  const data = parsed?.data ?? {};
+  const moves = (data.moves ?? []) as MoveRecord[];
+  const rooms = (data.rooms ?? []) as RoomRecord[];
+  const boxes = (data.boxes ?? []) as BoxRecord[];
+  const items = (data.items ?? []) as ItemRecord[];
+
+  try {
+    if (mode === 'replace') {
+      await db.transaction('rw', db.moves, db.rooms, db.boxes, db.items, async () => {
+        await Promise.all([db.items.clear(), db.boxes.clear(), db.rooms.clear(), db.moves.clear()]);
+        if (moves.length) await db.moves.bulkAdd(moves);
+        if (rooms.length) await db.rooms.bulkAdd(rooms);
+        if (boxes.length) await db.boxes.bulkAdd(boxes);
+        if (items.length) await db.items.bulkAdd(items);
+      });
+    } else {
+      // merge (upsert by id)
+      await db.transaction('rw', db.moves, db.rooms, db.boxes, db.items, async () => {
+        for (const m of moves) await db.moves.put(m);
+        for (const r of rooms) await db.rooms.put(r);
+        for (const b of boxes) await db.boxes.put(b);
+        for (const it of items) await db.items.put(it);
+      });
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error('importJSON failed', e);
+    return { ok: false, error: 'IMPORT_FAILED' };
+  }
+}
