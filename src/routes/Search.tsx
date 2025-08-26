@@ -61,7 +61,7 @@ export default function Search() {
               >
                 <div className="font-medium">
                   <span className="text-neutral-500 mr-1">#{x.number}</span>
-                  {x.name}
+                  {x.name?.trim() ? x.name : 'Box'}
                 </div>
                 <div className="text-sm text-neutral-600">
                   {roomsMap[x.roomId]?.name ? `Room: ${roomsMap[x.roomId].name}` : ''}
