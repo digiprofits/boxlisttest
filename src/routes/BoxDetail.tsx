@@ -129,16 +129,8 @@ export default function BoxDetail() {
     if (!saved) saved = await call('addItemToBox', box.id, { name, notes });
     if (!saved) {
       // Dexie fallback
-      try {
-        await db.items?.add?.(temp);
-      } catch (e) {
-        console.error('Dexie add failed', e);
-      }
+      try { await db.items?.add?.(temp); } catch (e) { console.error('Dexie add failed', e); }
     }
-  }
-
-  function onNameKey(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Enter') { e.preventDefault(); addItem(); }
   }
 
   async function deleteItem(id: string) {
@@ -237,7 +229,11 @@ export default function BoxDetail() {
         </div>
       </div>
 
-      <div className="card p-4 space-y-3">
+      {/* ADD ITEM — now a form that submits on Enter */}
+      <form
+        className="card p-4 space-y-3"
+        onSubmit={(e) => { e.preventDefault(); addItem(); }}
+      >
         <div>
           <label className="block text-sm font-medium mb-1">Item name</label>
           <input
@@ -246,7 +242,14 @@ export default function BoxDetail() {
             placeholder="e.g., Plates"
             value={newItemName}
             onChange={(e)=>setNewItemName(e.target.value)}
-            onKeyDown={onNameKey}
+            // catch both Enter and mobile “Next” (often behaves like Tab)
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === 'Tab') {
+                e.preventDefault();
+                addItem();
+              }
+            }}
+            enterKeyHint="done"
           />
         </div>
         <div>
@@ -257,12 +260,13 @@ export default function BoxDetail() {
             value={newItemNotes}
             onChange={(e)=>setNewItemNotes(e.target.value)}
             onKeyDown={(e)=>{ if (e.key==='Enter'){ e.preventDefault(); addItem(); } }}
+            enterKeyHint="done"
           />
         </div>
         <div>
-          <button className="btn btn-primary" onClick={addItem}>Add Item (Enter)</button>
+          <button type="submit" className="btn btn-primary">Add Item (Enter)</button>
         </div>
-      </div>
+      </form>
 
       <div className="space-y-3">
         {items.length === 0 ? (
