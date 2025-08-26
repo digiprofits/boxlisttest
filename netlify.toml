@@ -2,20 +2,20 @@
   command = "npm run build"
   publish = "dist"
 
-# Single-page app fallback
+# SPA fallback
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
 
-# Ensure correct content type + no long caching for the PWA files
+# Always re-fetch the SW + manifest
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
 [[headers]]
   for = "/manifest.webmanifest"
   [headers.values]
     Cache-Control = "no-cache"
     Content-Type = "application/manifest+json"
-
-[[headers]]
-  for = "/sw.js"
-  [headers.values]
-    Cache-Control = "no-cache"
