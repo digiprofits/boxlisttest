@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { createRoom, deleteRoom, listBoxes, listRooms, updateRoom, useUI } from '@/store';
+import { createBox, createRoom, deleteRoom, listBoxes, listRooms, updateRoom, useUI } from '@/store';
 import InlineEditable from '@/components/InlineEditable';
 
 type SortKey = 'name-asc' | 'name-desc' | 'updated-desc';
@@ -44,6 +44,17 @@ export default function Rooms() {
     setRooms(await listRooms(moveId!));
     // Go straight to Boxes filtered to the new room
     nav(`/moves/${moveId}/boxes?roomId=${r.id}`);
+  }
+
+  async function addBoxInRoom(roomId: string) {
+    if (!moveId) return;
+    const res = await createBox(moveId, roomId);
+    if ((res as any)?.error === 'DUPLICATE_NUMBER') {
+      alert('Box number conflict');
+      return;
+    }
+    // After creating, show Boxes filtered to that room
+    nav(`/moves/${moveId}/boxes?roomId=${roomId}`);
   }
 
   async function rename(id: string, name: string) {
@@ -91,6 +102,9 @@ export default function Rooms() {
             <div className="flex items-center justify-between gap-3">
               <InlineEditable value={r.name} onSave={(v) => rename(r.id, v)} />
               <div className="flex gap-2">
+                <button className="btn btn-ghost" onClick={() => addBoxInRoom(r.id)}>
+                  Add Box
+                </button>
                 <Link className="btn btn-ghost" to={`/moves/${moveId}/boxes?roomId=${r.id}`}>
                   Open
                 </Link>
