@@ -60,3 +60,49 @@ await db.moves.delete(id);
 }
 export async function listMoves(){
 }
+// ---- explicit re-exports to satisfy bundlers ----
+export {
+  // boxes
+  listBoxes,
+  listBoxesInRoom,
+  getBox,
+  getBoxById,
+  createBox,
+  addBox,
+  newBox,
+  updateBox,
+  updateBoxStatus,
+  deleteBox,
+  deleteBoxById,
+  removeBox,
+  destroyBox,
+  addBoxImage,
+  appendBoxImage,
+  removeBoxImage,
+  deleteBoxImage,
+  nextBoxNumber,
+  isBoxNumberTaken,
+  // items
+  listItemsInBox,
+  listAllItemsInMove,
+  createItem,
+  addItemToBox,
+  addItem,
+  saveItem,
+  updateItem,
+  removeItem,
+  deleteItem,
+  // rooms & moves
+  listRooms,
+  getRoom,
+  createRoom,
+  updateRoom,
+  deleteRoom,
+  listMoves,
+  getMove,
+  createMove,
+  updateMove,
+  deleteMove,
+  // ui
+  useUI,
+};
