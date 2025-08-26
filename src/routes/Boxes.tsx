@@ -1,37 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { listBoxes, listRooms, updateBoxStatus, useUI } from '@/store';
 import type { BoxStatus } from '@/types';
 
 const STATUS: BoxStatus[] = ['open', 'packed', 'sealed', 'unpacked'];
-
-type SortKey =
-  | 'number-asc'
-  | 'number-desc'
-  | 'name-asc'
-  | 'name-desc'
-  | 'created-desc'
-  | 'updated-desc';
-
-type Box = {
-  id: string;
-  moveId: string;
-  roomId: string;
-  number: string;
-  name: string;
-  status: BoxStatus;
-  images?: string[];
-  createdAt: number;
-  updatedAt: number;
-};
-type Room = { id: string; moveId: string; name: string };
+type SortKey = 'number-asc' | 'number-desc' | 'created-desc' | 'updated-desc';
 
 export default function Boxes() {
   const { moveId } = useParams();
   const { setCurrentMove } = useUI();
-  const [boxes, setBoxes] = useState<Box[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [roomId, setRoomId] = useState<string>('ALL');
+  const [params, setParams] = useSearchParams();
+  const [boxes, setBoxes] = useState<any[]>([]);
+  const [rooms, setRooms] = useState<any[]>([]);
+  const [roomId, setRoomId] = useState<string>(params.get('roomId') ?? 'ALL');
   const [sel, setSel] = useState<Record<BoxStatus, boolean>>({
     open: true,
     packed: true,
@@ -53,6 +34,14 @@ export default function Boxes() {
     })();
   }, [moveId]);
 
+  // keep URL in sync with chosen room
+  useEffect(() => {
+    const p = new URLSearchParams(params);
+    if (roomId === 'ALL') p.delete('roomId');
+    else p.set('roomId', roomId);
+    setParams(p, { replace: true });
+  }, [roomId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const visible = useMemo(() => {
     let list = boxes;
     if (roomId !== 'ALL') list = list.filter((b) => b.roomId === roomId);
@@ -63,10 +52,6 @@ export default function Boxes() {
           return a.number.localeCompare(b.number, undefined, { numeric: true });
         case 'number-desc':
           return b.number.localeCompare(a.number, undefined, { numeric: true });
-        case 'name-asc':
-          return a.name.localeCompare(b.name);
-        case 'name-desc':
-          return b.name.localeCompare(a.name);
         case 'created-desc':
           return b.createdAt - a.createdAt;
         case 'updated-desc':
@@ -77,23 +62,21 @@ export default function Boxes() {
 
   return (
     <div className="space-y-4">
-      <h1 className="h1">All Boxes in Move</h1>
+      <h1 className="h1">Boxes</h1>
+
       <div className="flex flex-wrap items-center gap-4">
         <div>
           <label className="mr-2">Room:</label>
-          <select
-            className="select"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-          >
+          <select className="select" value={roomId} onChange={(e) => setRoomId(e.target.value)}>
             <option value="ALL">All Rooms</option>
-            {rooms.map((r) => (
+            {rooms.map((r: any) => (
               <option key={r.id} value={r.id}>
                 {r.name}
               </option>
             ))}
           </select>
         </div>
+
         <div>
           <span className="mr-2">Filter:</span>
           {STATUS.map((s) => (
@@ -107,6 +90,7 @@ export default function Boxes() {
             </label>
           ))}
         </div>
+
         <div>
           <label className="mr-2">Sort:</label>
           <select
@@ -116,8 +100,6 @@ export default function Boxes() {
           >
             <option value="number-asc">Number ↑</option>
             <option value="number-desc">Number ↓</option>
-            <option value="name-asc">Name A–Z</option>
-            <option value="name-desc">Name Z–A</option>
             <option value="created-desc">Most Recent (created)</option>
             <option value="updated-desc">Most Recent (updated)</option>
           </select>
@@ -133,26 +115,29 @@ export default function Boxes() {
               <div className="flex items-center justify-between">
                 <div className="font-semibold">
                   <span className="text-neutral-500 mr-1">#{b.number}</span>
-                  {b.name}
+                  Box
                 </div>
-                <span className={`status-pill status-${b.status}`}>{b.status}</span>
-              </div>
-              <div className="mt-2 flex justify-between">
-                <Link className="btn btn-ghost" to={`/moves/${b.moveId}/boxes/${b.id}`}>
-                  Open
-                </Link>
-                <button
-                  className="btn btn-ghost"
-                  onClick={async () => {
-                    const cycle: BoxStatus[] = ['open', 'packed', 'sealed', 'unpacked'];
-                    const next = cycle[(cycle.indexOf(b.status) + 1) % cycle.length];
-                    await updateBoxStatus(b.id, next);
+                <select
+                  className="select"
+                  value={b.status}
+                  onChange={async (e) => {
+                    await updateBoxStatus(b.id, e.target.value as BoxStatus);
                     const bx = await listBoxes(moveId!);
                     setBoxes(bx);
                   }}
                 >
-                  Cycle Status
-                </button>
+                  {STATUS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mt-2 flex justify-between">
+                <Link className="btn btn-ghost" to={`/moves/${b.moveId}/boxes/${b.id}`}>
+                  Details
+                </Link>
               </div>
             </div>
           ))
