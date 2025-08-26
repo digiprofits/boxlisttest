@@ -28,7 +28,6 @@ export default function Moves() {
     nameRef.current!.value = '';
     setMoves(await listMoves());
     setCurrentMove(m.id);
-    // Open Rooms immediately (your requested flow)
     nav(`/moves/${m.id}/rooms`);
   }
 
@@ -41,6 +40,44 @@ export default function Moves() {
     if (!confirm('Delete this move? Rooms, boxes and items will also be removed.')) return;
     await deleteMove(id);
     setMoves(await listMoves());
+  }
+
+  if (moves.length === 0) {
+    return (
+      <div className="space-y-6">
+        <h1 className="h1">Welcome to BoxLister</h1>
+        <div className="card p-6">
+          <ol className="list-decimal pl-5 space-y-3">
+            <li>
+              Click <span className="font-semibold">New Move</span>
+            </li>
+            <li>
+              Add boxes (set status, add images)
+            </li>
+            <li>
+              Add items to each box (<em>Enter</em> adds quickly)
+            </li>
+            <li>Print labels with QR codes</li>
+          </ol>
+          <div className="mt-6">
+            <input
+              ref={nameRef}
+              className="input mr-2"
+              placeholder="Move name"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  addMove();
+                }
+              }}
+            />
+            <button className="btn btn-primary" onClick={addMove}>
+              New Move
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -86,9 +123,6 @@ export default function Moves() {
             </div>
           </div>
         ))}
-        {moves.length === 0 && (
-          <div className="text-neutral-500">Create your first move to get started.</div>
-        )}
       </div>
     </div>
   );
