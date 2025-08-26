@@ -1,18 +1,4 @@
 import Dexie, { Table } from 'dexie';
-import type { MoveRecord, BoxRecord, ItemRecord, RoomRecord } from './types';
-
-
-export class BoxDB extends Dexie {
-moves!: Table<MoveRecord, string>;
-rooms!: Table<RoomRecord, string>;
-boxes!: Table<BoxRecord, string>;
-items!: Table<ItemRecord, string>;
-
-
-constructor() {
-super('boxlister_v2');
-
-
 // v1 (legacy) — moves, boxes, items only (old keypaths/indexes)
 this.version(1).stores({
 moves: 'id, name, updatedAt',
@@ -71,4 +57,21 @@ nextByMove[moveId] = Math.max(nextByMove[moveId] ?? 0, n);
 
 
 for (const b of boxes) {
+const moveId = b.moveId;
+if (!b.number || String(b.number).trim() === '' || String(b.number) === '0') {
+const next = (nextByMove[moveId] ?? 0) + 1;
+nextByMove[moveId] = next;
+b.number = String(next).padStart(2, '0');
+} else {
+// normalize padding to at least 2
+const n = parseInt(String(b.number), 10);
+if (!Number.isNaN(n)) b.number = String(n).padStart(2, '0');
+}
+await tx.table('boxes').put(b);
+}
+});
+}
+}
+
+
 export const db = new BoxDB();
