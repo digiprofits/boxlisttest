@@ -14,20 +14,20 @@ export class BoxDB extends Dexie {
   constructor() {
     super('boxlister_v2');
 
-    // v1 (legacy) — no rooms, no box.number
+    // v1 (legacy)
     this.version(1).stores({
       moves: 'id, name, updatedAt',
       boxes: 'id, moveId, name, status, updatedAt',
-      items: 'id, moveId, boxId, name, updatedAt'
+      items: 'id, moveId, boxId, name, updatedAt',
     });
 
-    // v2 — introduce rooms + box.number + roomId
+    // v2 — add rooms + box.number + roomId
     this.version(2)
       .stores({
         moves: 'id, name, updatedAt',
         rooms: 'id, moveId, name, sortOrder, updatedAt',
         boxes: 'id, moveId, roomId, number, name, status, updatedAt',
-        items: 'id, moveId, boxId, name, updatedAt'
+        items: 'id, moveId, boxId, name, updatedAt',
       })
       .upgrade(async (tx) => {
         const moves = (await tx.table('moves').toArray()) as MoveRecord[];
@@ -43,36 +43,35 @@ export class BoxDB extends Dexie {
             moveId: mv.id,
             name: 'Unassigned',
             createdAt: now,
-            updatedAt: now
+            updatedAt: now,
           };
           await tx.table('rooms').add(room);
           unassignedByMove[mv.id] = room;
         }
 
-        // Track highest number per move
+        // Keep track of max number per move
         const maxByMove: Record<string, number> = {};
 
-        // First pass: ensure roomId/status and compute current maxima
+        // Pass 1: ensure roomId/status and discover maxima
         for (const b of boxes) {
           const moveId = b.moveId;
           if (!b.roomId && unassignedByMove[moveId]) {
             b.roomId = unassignedByMove[moveId].id;
           }
           if (!b.status) b.status = 'open';
-
           const asNum = parseInt(String(b.number ?? ''), 10);
           const n = Number.isNaN(asNum) ? 0 : asNum;
           maxByMove[moveId] = Math.max(maxByMove[moveId] ?? 0, n);
         }
 
-        // Second pass: assign/normalize numbers and persist
+        // Pass 2: assign/normalize numbers then persist
         for (const b of boxes) {
           const moveId = b.moveId;
           let num = parseInt(String(b.number ?? ''), 10);
           if (Number.isNaN(num) || num <= 0) {
             const next = (maxByMove[moveId] ?? 0) + 1;
             maxByMove[moveId] = next;
-            b.number = String(next).padStart(2, '0'); // default pad 2
+            b.number = String(next).padStart(2, '0');
           } else {
             b.number = String(num).padStart(2, '0');
           }
