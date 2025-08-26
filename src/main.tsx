@@ -4,10 +4,9 @@ import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import './styles/index.css';
 import App from './App';
 import Moves from './routes/Moves';
+import Rooms from './routes/Rooms';
 import Boxes from './routes/Boxes';
 import BoxDetail from './routes/BoxDetail';
-import Rooms from './routes/Rooms';
-import RoomBoxes from './routes/RoomBoxes';
 import Search from './routes/Search';
 import Settings from './routes/Settings';
 import Labels from './routes/Labels';
@@ -19,7 +18,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Moves /> },
       { path: 'moves/:moveId/rooms', element: <Rooms /> },
-      { path: 'moves/:moveId/rooms/:roomId/boxes', element: <RoomBoxes /> },
+      // RoomBoxes REMOVED — Boxes page handles room filtering
       { path: 'moves/:moveId/boxes', element: <Boxes /> },
       { path: 'moves/:moveId/boxes/:boxId', element: <BoxDetail /> },
       { path: 'moves/:moveId/search', element: <Search /> },
