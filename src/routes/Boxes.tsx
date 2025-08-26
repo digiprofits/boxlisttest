@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { listBoxes, listRooms, updateBoxStatus, useUI } from '@/store';
+import { createBox, listBoxes, listRooms, updateBoxStatus, useUI } from '@/store';
 import type { BoxStatus } from '@/types';
 
 const STATUS: BoxStatus[] = ['open', 'packed', 'sealed', 'unpacked'];
@@ -10,6 +10,7 @@ export default function Boxes() {
   const { moveId } = useParams();
   const { setCurrentMove } = useUI();
   const [params, setParams] = useSearchParams();
+
   const [boxes, setBoxes] = useState<any[]>([]);
   const [rooms, setRooms] = useState<any[]>([]);
   const [roomId, setRoomId] = useState<string>(params.get('roomId') ?? 'ALL');
@@ -20,6 +21,7 @@ export default function Boxes() {
     unpacked: true,
   });
   const [sort, setSort] = useState<SortKey>('number-asc');
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     if (moveId) setCurrentMove(moveId);
@@ -40,7 +42,8 @@ export default function Boxes() {
     if (roomId === 'ALL') p.delete('roomId');
     else p.set('roomId', roomId);
     setParams(p, { replace: true });
-  }, [roomId]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
 
   const visible = useMemo(() => {
     let list = boxes;
@@ -60,9 +63,33 @@ export default function Boxes() {
     });
   }, [boxes, roomId, sel, sort]);
 
+  async function handleAddBox() {
+    if (!moveId || roomId === 'ALL') return;
+    setAdding(true);
+    const res = await createBox(moveId, roomId);
+    setAdding(false);
+    if ((res as any)?.error === 'DUPLICATE_NUMBER') {
+      alert('Box number conflict');
+      return;
+    }
+    // refresh list
+    const bx = await listBoxes(moveId);
+    setBoxes(bx);
+  }
+
   return (
     <div className="space-y-4">
-      <h1 className="h1">Boxes</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="h1">Boxes</h1>
+        <button
+          className="btn btn-primary"
+          onClick={handleAddBox}
+          disabled={roomId === 'ALL' || adding}
+          title={roomId === 'ALL' ? 'Choose a room to add a box' : 'Add a new box in this room'}
+        >
+          {adding ? 'Adding…' : 'Add Box'}
+        </button>
+      </div>
 
       <div className="flex flex-wrap items-center gap-4">
         <div>
@@ -108,7 +135,11 @@ export default function Boxes() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {visible.length === 0 ? (
-          <div className="text-neutral-500">No boxes found.</div>
+          <div className="text-neutral-500">
+            {roomId === 'ALL'
+              ? 'Choose a room to view or add boxes.'
+              : 'No boxes found in this room yet.'}
+          </div>
         ) : (
           visible.map((b) => (
             <div key={b.id} className="card p-4">
