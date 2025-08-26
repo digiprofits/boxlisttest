@@ -1,77 +1,85 @@
+// src/db.ts
 import Dexie, { Table } from 'dexie';
-// v1 (legacy) — moves, boxes, items only (old keypaths/indexes)
-this.version(1).stores({
-moves: 'id, name, updatedAt',
-boxes: 'id, moveId, name, status, updatedAt',
-items: 'id, moveId, boxId, name, updatedAt'
-});
+import type { MoveRecord, BoxRecord, ItemRecord, RoomRecord } from './types';
+import { customAlphabet } from 'nanoid/non-secure';
 
+const nanoid = customAlphabet('1234567890abcdef', 10);
 
-// v2 — introduce rooms + box.number + box.roomId
-this.version(2).stores({
-moves: 'id, name, updatedAt',
-rooms: 'id, moveId, name, sortOrder, updatedAt',
-boxes: 'id, moveId, roomId, number, name, status, updatedAt',
-items: 'id, moveId, boxId, name, updatedAt'
-}).upgrade(async (tx) => {
-// Create an "Unassigned" room per move, attach boxes without roomId, and assign numbers per move if missing.
-const moves = await tx.table('moves').toArray() as MoveRecord[];
-const boxes = await tx.table('boxes').toArray() as any[]; // may be old shape
+export class BoxDB extends Dexie {
+  moves!: Table<MoveRecord, string>;
+  rooms!: Table<RoomRecord, string>;
+  boxes!: Table<BoxRecord, string>;
+  items!: Table<ItemRecord, string>;
 
+  constructor() {
+    super('boxlister_v2');
 
-const unassignedByMove: Record<string, RoomRecord> = {};
-const now = Date.now();
+    // v1 (legacy) — no rooms, no box.number
+    this.version(1).stores({
+      moves: 'id, name, updatedAt',
+      boxes: 'id, moveId, name, status, updatedAt',
+      items: 'id, moveId, boxId, name, updatedAt'
+    });
 
+    // v2 — introduce rooms + box.number + roomId
+    this.version(2)
+      .stores({
+        moves: 'id, name, updatedAt',
+        rooms: 'id, moveId, name, sortOrder, updatedAt',
+        boxes: 'id, moveId, roomId, number, name, status, updatedAt',
+        items: 'id, moveId, boxId, name, updatedAt'
+      })
+      .upgrade(async (tx) => {
+        const moves = (await tx.table('moves').toArray()) as MoveRecord[];
+        const boxes = (await tx.table('boxes').toArray()) as any[];
 
-for (const mv of moves) {
-const room: RoomRecord = {
-id: crypto.randomUUID(),
-moveId: mv.id,
-name: 'Unassigned',
-createdAt: now,
-updatedAt: now,
-};
-await tx.table('rooms').add(room);
-unassignedByMove[mv.id] = room;
+        // Create "Unassigned" room per move
+        const unassignedByMove: Record<string, RoomRecord> = {};
+        const now = Date.now();
+
+        for (const mv of moves) {
+          const room: RoomRecord = {
+            id: nanoid(),
+            moveId: mv.id,
+            name: 'Unassigned',
+            createdAt: now,
+            updatedAt: now
+          };
+          await tx.table('rooms').add(room);
+          unassignedByMove[mv.id] = room;
+        }
+
+        // Track highest number per move
+        const maxByMove: Record<string, number> = {};
+
+        // First pass: ensure roomId/status and compute current maxima
+        for (const b of boxes) {
+          const moveId = b.moveId;
+          if (!b.roomId && unassignedByMove[moveId]) {
+            b.roomId = unassignedByMove[moveId].id;
+          }
+          if (!b.status) b.status = 'open';
+
+          const asNum = parseInt(String(b.number ?? ''), 10);
+          const n = Number.isNaN(asNum) ? 0 : asNum;
+          maxByMove[moveId] = Math.max(maxByMove[moveId] ?? 0, n);
+        }
+
+        // Second pass: assign/normalize numbers and persist
+        for (const b of boxes) {
+          const moveId = b.moveId;
+          let num = parseInt(String(b.number ?? ''), 10);
+          if (Number.isNaN(num) || num <= 0) {
+            const next = (maxByMove[moveId] ?? 0) + 1;
+            maxByMove[moveId] = next;
+            b.number = String(next).padStart(2, '0'); // default pad 2
+          } else {
+            b.number = String(num).padStart(2, '0');
+          }
+          await tx.table('boxes').put(b);
+        }
+      });
+  }
 }
-
-
-// Compute next number per move
-const nextByMove: Record<string, number> = {};
-
-
-for (const b of boxes) {
-// Ensure moveId exists (legacy always had it)
-const moveId = b.moveId;
-// Attach roomId if missing
-if (!b.roomId && unassignedByMove[moveId]) {
-b.roomId = unassignedByMove[moveId].id;
-}
-// Ensure status
-if (!b.status) b.status = 'open';
-// Prepare to assign/normalize number
-let n = parseInt(String(b.number ?? ''), 10);
-if (Number.isNaN(n)) n = 0;
-nextByMove[moveId] = Math.max(nextByMove[moveId] ?? 0, n);
-}
-
-
-for (const b of boxes) {
-const moveId = b.moveId;
-if (!b.number || String(b.number).trim() === '' || String(b.number) === '0') {
-const next = (nextByMove[moveId] ?? 0) + 1;
-nextByMove[moveId] = next;
-b.number = String(next).padStart(2, '0');
-} else {
-// normalize padding to at least 2
-const n = parseInt(String(b.number), 10);
-if (!Number.isNaN(n)) b.number = String(n).padStart(2, '0');
-}
-await tx.table('boxes').put(b);
-}
-});
-}
-}
-
 
 export const db = new BoxDB();
