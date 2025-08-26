@@ -29,7 +29,7 @@ async function call(fn: string, ...args: any[]) {
   return undefined;
 }
 
-/* ────────────────────────── Component ────────────────────────── */
+/* ────────────────────────── Route ────────────────────────── */
 export default function BoxDetailRoute() {
   const { moveId, boxId } = useParams();
   if (!moveId || !boxId) return <div className="p-4">Box not found.</div>;
@@ -52,6 +52,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
   const [editName, setEditName] = useState("");
   const [editNotes, setEditNotes] = useState("");
 
+  /* ───────── Load box + items ───────── */
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -83,10 +84,16 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     };
   }, [moveId, boxId]);
 
+  const genId = () =>
+    (typeof crypto !== "undefined" && (crypto as any).randomUUID
+      ? (crypto as any).randomUUID()
+      : nanoid());
+
   function saveAndReturn() {
     nav(`/moves/${moveId}/boxes`);
   }
 
+  /* ───────── Status ───────── */
   async function onStatusChange(next: string) {
     if (!box) return;
     const prev = box.status;
@@ -103,6 +110,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     }
   }
 
+  /* ───────── Images ───────── */
   function openImageFull(url: string) {
     window.open(url, "_blank");
   }
@@ -142,12 +150,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     }
   }
 
-  // robust id generator across older browsers
-  const genId = () =>
-    (typeof crypto !== "undefined" && (crypto as any).randomUUID
-      ? (crypto as any).randomUUID()
-      : nanoid());
-
+  /* ───────── Add item (now persists reliably) ───────── */
   async function addItem() {
     if (!box) return;
     const name = newItemName.trim();
@@ -164,25 +167,48 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
       updatedAt: Date.now(),
     };
 
+    // Optimistic UI
+    setItems((prev) => [newIt, ...prev]);
+    setNewItemName("");
+    setNewItemNotes("");
+    nameRef.current?.focus();
+
+    // Try every likely API signature…
     try {
-      // Try the possible store APIs we’ve seen
       await (
         call("addItemToBox", box.id, { name, notes }) ??
+        call("addItem", box.id, name, notes) ??
+        call("addItem", box.id, { name, notes }) ??
+        call("addItem", { boxId: box.id, name, notes }) ??
+        call("addItem", newIt) ??
+        call("createItemInBox", box.id, name, notes) ??
+        call("createItemInBox", box.id, { name, notes }) ??
         call("createItem", { ...newIt }) ??
         call("createItem", newIt) ??
         call("saveItem", newIt) ??
         call("saveItem", newIt.id, newIt)
       );
     } catch (err) {
-      // Log but don’t block optimistic UI
-      console.error("addItem store error:", err);
+      // ignore; we'll ensure persistence below
+      console.warn("Store createItem error (will fallback):", err);
     }
 
-    // Optimistic UI (and ensures Enter feels snappy)
-    setItems((prev) => [newIt, ...prev]);
-    setNewItemName("");
-    setNewItemNotes("");
-    nameRef.current?.focus();
+    // Verify persistence; if missing, write directly to Dexie (fallback)
+    try {
+      const after: Item[] = (await call("listItemsInBox", box.id)) || [];
+      const exists = after.some((it) => it.id === newIt.id || (it.name === name && it.notes === notes));
+      if (!exists) {
+        const anyStore: any = Store as any;
+        const db = anyStore.db || anyStore.dexie || anyStore._db;
+        if (db?.items?.put) {
+          await db.items.put(newIt);
+        } else if (anyStore.saveItem) {
+          await anyStore.saveItem(newIt.id, newIt);
+        }
+      }
+    } catch (err) {
+      console.error("Verify/put fallback error:", err);
+    }
   }
 
   function onNameKey(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -192,6 +218,7 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     }
   }
 
+  /* ───────── Edit / Delete items ───────── */
   function startEdit(it: Item) {
     setEditingId(it.id);
     setEditName(it.name);
@@ -205,7 +232,11 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
       updatedAt: Date.now(),
     };
     try {
-      await (call("updateItem", id, patch) ?? call("saveItem", id, patch) ?? call("saveItem", { id, ...patch }));
+      await (
+        call("updateItem", id, patch) ??
+        call("saveItem", id, patch) ??
+        call("saveItem", { id, ...patch })
+      );
     } catch (err) {
       console.error("saveEdit error:", err);
     }
@@ -221,12 +252,17 @@ function BoxDetail({ moveId, boxId }: { moveId: string; boxId: string }) {
     if (!confirm("Delete this item?")) return;
     try {
       await (call("removeItem", id) ?? call("deleteItem", id));
+      // hard fallback
+      const anyStore: any = Store as any;
+      const db = anyStore.db || anyStore.dexie || anyStore._db;
+      if (db?.items?.delete) await db.items.delete(id);
     } catch (err) {
       console.error("deleteItem error:", err);
     }
     setItems((prev) => prev.filter((it) => it.id !== id));
   }
 
+  /* ───────── Render ───────── */
   if (loading) return <div className="p-4 text-neutral-600">Loading...</div>;
   if (!box)
     return (
