@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { createBox, listBoxes, listRooms, listAllItemsInMove, updateBoxStatus, useUI } from '@/store';
+import { createBox, listBoxes, listRooms, listAllItemsInMove, updateBoxStatus, deleteBox, useUI } from '@/store';
 import type { BoxStatus } from '@/types';
 
 const STATUS: BoxStatus[] = ['open', 'packed', 'sealed', 'unpacked'];
@@ -25,18 +25,17 @@ export default function Boxes() {
 
   useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
 
-  useEffect(() => {
-    (async () => {
-      if (!moveId) return;
-      const [bx, rm, items] = await Promise.all([listBoxes(moveId), listRooms(moveId), listAllItemsInMove(moveId)]);
-      setBoxes(bx);
-      setRooms(rm as Room[]);
-      // build counts without N queries
-      const counts: Record<string, number> = {};
-      for (const it of items) counts[it.boxId] = (counts[it.boxId] || 0) + 1;
-      setItemCounts(counts);
-    })();
-  }, [moveId]);
+  async function loadAll() {
+    if (!moveId) return;
+    const [bx, rm, items] = await Promise.all([listBoxes(moveId), listRooms(moveId), listAllItemsInMove(moveId)]);
+    setBoxes(bx);
+    setRooms(rm as Room[]);
+    const counts: Record<string, number> = {};
+    for (const it of items) counts[it.boxId] = (counts[it.boxId] || 0) + 1;
+    setItemCounts(counts);
+  }
+
+  useEffect(() => { loadAll(); /* eslint-disable-next-line */ }, [moveId]);
 
   // keep URL in sync with chosen room
   useEffect(() => {
@@ -63,12 +62,22 @@ export default function Boxes() {
   }, [boxes, roomId, sel, sort]);
 
   async function handleAddBox() {
-    if (!moveId || roomId === 'ALL') return;
+    if (!moveId) return;
+    if (roomId === 'ALL') {
+      alert('Choose a room first to add a box.');
+      return;
+    }
     setAdding(true);
     await createBox(moveId, roomId);
     setAdding(false);
-    const bx = await listBoxes(moveId);
-    setBoxes(bx);
+    await loadAll();
+  }
+
+  async function handleDeleteBox(id: string) {
+    const ok = confirm('Delete this box? All items and images in the box will also be deleted.');
+    if (!ok) return;
+    await deleteBox(id);
+    await loadAll();
   }
 
   return (
@@ -107,14 +116,13 @@ export default function Boxes() {
         <button
           className="btn btn-primary"
           onClick={handleAddBox}
-          disabled={roomId === 'ALL' || adding}
           title={roomId === 'ALL' ? 'Choose a room to add a box' : 'Add a new box in this room'}
         >
           {adding ? 'Adding…' : 'Add Box'}
         </button>
       </div>
 
-      {/* Title moved below controls */}
+      {/* Title below controls */}
       <h1 className="h1">Boxes</h1>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -147,10 +155,13 @@ export default function Boxes() {
                 </div>
               </div>
 
-              <div className="mt-3">
-                <Link className="btn btn-ghost w-full" to={`/moves/${b.moveId}/boxes/${b.id}`}>
+              <div className="mt-3 flex gap-2">
+                <Link className="btn btn-ghost flex-1" to={`/moves/${b.moveId}/boxes/${b.id}`}>
                   Add/Edit Items
                 </Link>
+                <button className="btn btn-ghost text-red-600" onClick={() => handleDeleteBox(b.id)}>
+                  Delete
+                </button>
               </div>
             </div>
           ))
