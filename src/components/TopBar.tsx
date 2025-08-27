@@ -24,7 +24,7 @@ export default function TopBar() {
       <div className="mx-auto max-w-6xl px-3 sm:px-4">
         <div className="py-2 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2 font-semibold shrink-0">
-            <img src="/logo.svg" alt="BoxLister" className="h-6 w-6" />
+            <img src="/logo.png" alt="BoxLister" className="h-6 w-6" />
           </Link>
 
           {/* Tabs that wrap to a second line when needed */}
