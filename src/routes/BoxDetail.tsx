@@ -10,6 +10,7 @@ import {
   updateBoxStatus,
   addImagesToBox,
   addImagesToItem,
+  listRooms,
   useUI,
 } from '@/store';
 import type { BoxStatus } from '@/types';
@@ -34,24 +35,24 @@ export default function BoxDetail() {
 
   const [box, setBox] = useState<any | null>(null);
   const [items, setItems] = useState<Item[]>([]);
+  const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
   const itemRef = useRef<HTMLInputElement>(null);
-  const [notes, setNotes] = useState('');
 
   useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
 
   async function refresh() {
-    if (!boxId) return;
-    const [b, it] = await Promise.all([getBox(boxId), listItemsInBox(boxId)]);
+    if (!boxId || !moveId) return;
+    const [b, it, rms] = await Promise.all([getBox(boxId), listItemsInBox(boxId), listRooms(moveId)]);
     setBox(b || null);
     setItems(it);
-    setNotes(b?.notes ?? '');
+    setRooms(rms as any);
   }
 
   useEffect(() => { refresh(); /* eslint-disable-next-line */ }, [boxId]);
 
-  const title = useMemo(() => (box?.number ? `#${box.number}` : 'Box'), [box]);
+  const title = useMemo(() => (box?.number ? `Box: #${box.number}` : 'Box'), [box]);
 
   async function onAddItem() {
     if (!box || !itemRef.current) return;
@@ -67,7 +68,7 @@ export default function BoxDetail() {
   async function saveAndBack() {
     if (!box) return;
     setSaving(true);
-    await updateBox(box.id, { notes });
+    // no box-level notes in Phase 3B
     setSaving(false);
     history.back();
   }
@@ -76,36 +77,47 @@ export default function BoxDetail() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header: title + room selector + status */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h1 className="h1">{title}</h1>
-        <div className="flex items-center gap-2">
-          <label className="text-sm text-neutral-600">Status:</label>
-          <select
-            className="select"
-            value={box.status}
-            onChange={async (e) => { await updateBoxStatus(box.id, e.target.value as BoxStatus); await refresh(); }}
-          >
-            {STATUS.map((s) => (<option key={s} value={s}>{s}</option>))}
-          </select>
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-neutral-600">Room:</label>
+            <select
+              className="select"
+              value={box.roomId}
+              onChange={async (e) => {
+                await updateBox(box.id, { roomId: e.target.value });
+                await refresh();
+              }}
+            >
+              {rooms.map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-neutral-600">Status:</label>
+            <select
+              className="select"
+              value={box.status}
+              onChange={async (e) => {
+                await updateBoxStatus(box.id, e.target.value as BoxStatus);
+                await refresh();
+              }}
+            >
+              {STATUS.map((s) => (<option key={s} value={s}>{s}</option>))}
+            </select>
+          </div>
         </div>
       </div>
-
-      {/* Notes */}
-      <section className="card p-4 space-y-2">
-        <h2 className="font-semibold">Notes</h2>
-        <textarea
-          className="input w-full h-28"
-          placeholder="Add box notes…"
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-        />
-      </section>
 
       {/* Images */}
       <section className="card p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Images</h2>
-          <ImageUploader label="Add Image(s)" multiple onFiles={async (files) => { await addImagesToBox(box.id, files); }} />
+          <ImageUploader label="Add Image(s)" multiple preferCamera onFiles={async (files) => { await addImagesToBox(box.id, files); await refresh(); }} />
         </div>
         <ImageGrid parentType="box" parentId={box.id} />
       </section>
@@ -140,7 +152,7 @@ export default function BoxDetail() {
 
       <div>
         <button className="btn btn-ghost" onClick={saveAndBack} disabled={saving}>
-          {saving ? 'Saving…' : 'Save and back to Boxes'}
+          {saving ? 'Saving…' : 'Save and back'}
         </button>
         <Link className="btn btn-ghost ml-2" to={`/moves/${box.moveId}/boxes?roomId=${box.roomId}`}>Cancel</Link>
       </div>
@@ -189,7 +201,7 @@ function EditableItem({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <div className="font-medium">Images</div>
-              <ImageUploader label="Add Image(s)" multiple onFiles={onAddImages} />
+              <ImageUploader label="Add Image(s)" multiple preferCamera onFiles={onAddImages} />
             </div>
             <ImageGrid parentType="item" parentId={item.id} />
           </div>
