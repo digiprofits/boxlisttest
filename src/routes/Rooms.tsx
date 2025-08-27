@@ -11,10 +11,11 @@ export default function Rooms() {
   const { setCurrentMove } = useUI();
   const [rooms, setRooms] = useState<any[]>([]);
   const [sort, setSort] = useState<SortKey>('name-asc');
+  const [addBoxRoomId, setAddBoxRoomId] = useState<string>('');
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
-  useEffect(() => { (async () => { if (!moveId) return; setRooms(await listRooms(moveId)); })(); }, [moveId]);
+  useEffect(() => { (async () => { if (!moveId) return; const rms = await listRooms(moveId); setRooms(rms); setAddBoxRoomId(rms[0]?.id || ''); })(); }, [moveId]);
 
   const sorted = useMemo(() => {
     const list = [...rooms];
@@ -29,8 +30,16 @@ export default function Rooms() {
     const name = nameRef.current!.value.trim(); if (!name) return;
     const r = await createRoom(moveId!, name);
     nameRef.current!.value = '';
-    setRooms(await listRooms(moveId!));
+    const rms = await listRooms(moveId!);
+    setRooms(rms);
+    setAddBoxRoomId(rms[0]?.id || r.id);
     nav(`/moves/${moveId}/boxes?roomId=${r.id}`);
+  }
+
+  async function addBoxToSelectedRoom() {
+    if (!addBoxRoomId) { alert('Choose a room first.'); return; }
+    await createBox(moveId!, addBoxRoomId);
+    nav(`/moves/${moveId}/boxes?roomId=${addBoxRoomId}`);
   }
 
   async function addBoxInRoom(roomId: string) {
@@ -50,7 +59,7 @@ export default function Rooms() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
         <h1 className="h1">Rooms</h1>
         <div className="flex items-center gap-3">
@@ -68,6 +77,15 @@ export default function Rooms() {
           />
           <button className="btn btn-primary" onClick={addRoom}>Add</button>
         </div>
+      </div>
+
+      {/* New: obvious Add Box control */}
+      <div className="card p-4 flex flex-wrap items-center gap-3">
+        <div className="text-sm text-neutral-700">Add box to room:</div>
+        <select className="select" value={addBoxRoomId} onChange={(e)=>setAddBoxRoomId(e.target.value)}>
+          {rooms.map((r:any)=>(<option key={r.id} value={r.id}>{r.name}</option>))}
+        </select>
+        <button className="btn btn-primary" onClick={addBoxToSelectedRoom}>Add Box</button>
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
