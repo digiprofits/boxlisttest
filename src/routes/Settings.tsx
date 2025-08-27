@@ -1,129 +1,97 @@
-import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import { exportJSON, importJSON, listMoves, listBoxes, listItemsInBox } from '@/store';
+import { useEffect } from 'react';
+import { useParams } from 'react-router-dom';
+import { exportJSON, importJSON, useUI } from '@/store';
 import { itemsToCSV } from '@/utils/csv';
 import { download } from '@/utils/download';
 
 export default function Settings() {
-  const nav = useNavigate();
   const { moveId } = useParams();
+  const { setCurrentMove } = useUI();
 
-  const [moves, setMoves] = useState<any[]>([]);
-  const [boxes, setBoxes] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
+  useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
 
-  useEffect(() => {
-    (async () => {
-      const mv = await listMoves();
-      setMoves(mv);
-
-      const allBoxes: any[] = [];
-      const allItems: any[] = [];
-      for (const m of mv) {
-        const bx = await listBoxes(m.id);
-        allBoxes.push(...bx);
-        for (const b of bx) {
-          const it = await listItemsInBox(b.id);
-          allItems.push(...it);
-        }
-      }
-      setBoxes(allBoxes);
-      setItems(allItems);
-    })();
-  }, []);
-
-  async function doExportJSON() {
-    const data = await exportJSON();
-    download('boxlister-backup.json', JSON.stringify(data, null, 2));
+  async function handleExportJSON() {
+    const s = await exportJSON();
+    download('boxlister-backup.json', s, 'application/json');
   }
 
-  function handleImportJSON(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async () => {
-      try {
-        await importJSON(JSON.parse(String(reader.result)));
-        alert('Import complete. Reload to see changes.');
-      } catch (err) {
-        alert('Import failed: ' + (err as Error).message);
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  function doExportCSV() {
-    const csv = itemsToCSV(moves, boxes, items);
+  async function handleExportCSV() {
+    const csv = await itemsToCSV(moveId!);
     download('boxlister-inventory.csv', csv, 'text/csv');
   }
 
-  // --- New: reset the install screen/banner memory flags ---
-  function resetInstallHints() {
-    // Full-screen Install Gate
-    localStorage.removeItem('boxlister.installGate.dismissed');
-    // Older inline/banner helpers (safe to clear even if unused)
-    localStorage.removeItem('boxlister.install.dismissed');
-    alert('Install screen has been reset. Reload the page to see it again.');
+  async function handleImportJSON() {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.accept = '.json,application/json';
+    inp.onchange = async () => {
+      const file = inp.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const res = await importJSON(text, { mode: 'merge' });
+      if (!res.ok) alert('Import failed');
+      else alert('Import complete');
+    };
+    inp.click();
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl sm:text-2xl font-bold">Settings &amp; Data</h1>
+    <div className="space-y-8">
+      <h1 className="h1">Settings &amp; Data</h1>
 
-      {/* Install & UX */}
-      <div className="card p-4 space-y-3">
-        <div className="font-medium">Install &amp; UX</div>
-        <p className="text-sm text-neutral-600">
-          Show the install screen again on next load.
-        </p>
-        <div className="flex gap-2">
-          <button className="btn btn-ghost" onClick={resetInstallHints}>
-            Reset Install Screen
-          </button>
-        </div>
-      </div>
+      <section className="card p-5 space-y-3">
+        <h2 className="font-semibold">Install &amp; UX</h2>
+        <button
+          className="btn btn-ghost"
+          onClick={() => {
+            localStorage.removeItem('install-dismissed');
+            alert('Install screen will be shown again on next load.');
+          }}
+        >
+          Reset Install Screen
+        </button>
 
-      {/* Data Export / Import */}
-      <div className="card p-4 space-y-4">
-        <div className="font-medium">Data Export / Import</div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <button className="btn btn-primary w-full" onClick={doExportJSON}>
-            Export JSON
-            <br className="hidden sm:block" />
-            (Full Backup)
-          </button>
-
-          <label className="btn btn-ghost w-full cursor-pointer text-center">
-            Import JSON
-            <input
-              type="file"
-              className="hidden"
-              accept="application/json"
-              onChange={handleImportJSON}
-            />
-          </label>
-
-          <button className="btn btn-ghost w-full" onClick={doExportCSV}>
-            Export CSV
-            <br className="hidden sm:block" />
-            (Inventory)
-          </button>
-
-          <button
-            className="btn btn-ghost w-full disabled:opacity-50"
-            onClick={() => nav(`/moves/${moveId}/labels`)}
-            disabled={!moveId}
-            title={!moveId ? 'Create/select a move first' : undefined}
+        <div className="pt-2">
+          <h3 className="font-medium mb-1">How to Install BoxLister</h3>
+          <ul className="list-disc pl-6 space-y-1 text-sm text-neutral-700">
+            <li><span className="font-semibold">iOS (Safari):</span> tap <em>Share</em> → <em>Add to Home Screen</em>.</li>
+            <li><span className="font-semibold">Android (Chrome):</span> tap <em>⋮</em> → <em>Install App</em>.</li>
+          </ul>
+          <a
+            href="https://web.dev/learn/pwa"
+            target="_blank"
+            rel="noreferrer"
+            className="text-blue-600 underline text-sm"
           >
-            Printable Labels
-          </button>
+            Learn more about PWAs
+          </a>
         </div>
+      </section>
 
-        <p className="text-sm text-neutral-600">
-          JSON includes all moves, boxes, and items. CSV is a flat inventory list.
+      <section className="card p-5 space-y-3">
+        <h2 className="font-semibold">Data Export / Import</h2>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <button className="btn btn-primary" onClick={handleExportJSON}>Export JSON (Full Backup)</button>
+          <button className="btn btn-ghost" onClick={handleImportJSON}>Import JSON</button>
+          <button className="btn btn-ghost" onClick={handleExportCSV}>Export CSV (Inventory)</button>
+          <a className="btn btn-ghost" href={`/moves/${moveId}/labels`}>Printable Labels</a>
+        </div>
+        <p className="text-sm text-neutral-600">JSON includes all moves, rooms, boxes, and items. CSV is a flat inventory list.</p>
+      </section>
+
+      <section className="card p-5 space-y-2">
+        <h2 className="font-semibold">About</h2>
+        <p className="text-sm text-neutral-700">
+          BoxLister © {new Date().getFullYear()}. All rights reserved. Domains: <strong>boxlister.com</strong> and <strong>boxlister.app</strong>.
         </p>
-      </div>
+        <p className="text-sm text-neutral-700">
+          BoxLister is the brainchild of <strong>Nathan Sullivan</strong> and <strong>Matthew Clark</strong>.
+        </p>
+        <p className="text-xs text-neutral-500 pt-2">
+          Legal: This software is provided “as is” without warranties of any kind. You are responsible for exporting and backing up your data. 
+          Use of brand names and assets is subject to local laws. By using this app, you agree to the Terms that may be published at the above domains.
+        </p>
+      </section>
     </div>
   );
 }
