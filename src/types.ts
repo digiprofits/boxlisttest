@@ -1,42 +1,49 @@
 export type BoxStatus = 'open' | 'packed' | 'sealed' | 'unpacked';
 
-export interface MoveRecord {
+export type MoveRecord = {
   id: string;
   name: string;
   notes?: string;
   createdAt: number;
   updatedAt: number;
-}
+};
 
-export interface RoomRecord {
+export type RoomRecord = {
   id: string;
   moveId: string;
   name: string;
   sortOrder?: number;
   createdAt: number;
   updatedAt: number;
-}
+};
 
-export interface BoxRecord {
+export type BoxRecord = {
   id: string;
-  moveId: string;   // denormalized for faster lookups
-  roomId: string;   // FK → RoomRecord.id
-  number: string;   // unique per Move (e.g., "01")
-  name: string;     // user-defined box name
+  moveId: string;
+  roomId: string;
+  number: string;        // display number e.g. "01"
+  name?: string;         // generally unused (we show number), kept for compatibility
   status: BoxStatus;
-  notes?: string;
-  images?: string[];
+  notes?: string;        // NEW
   createdAt: number;
   updatedAt: number;
-}
+};
 
-export interface ItemRecord {
+export type ItemRecord = {
   id: string;
-  moveId: string; // denormalized for search/filters
-  boxId: string;  // FK → BoxRecord.id
+  moveId: string;
+  boxId: string;
   name: string;
-  notes?: string;
-  order?: number;
+  notes?: string;        // NEW
   createdAt: number;
   updatedAt: number;
-}
+};
+
+/** Image stored as a Data URL (base64). We keep images separate for many-to-one. */
+export type ImageRecord = {
+  id: string;
+  parentType: 'box' | 'item';
+  parentId: string;
+  dataUrl: string;       // image/* data URL
+  createdAt: number;
+};
