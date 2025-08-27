@@ -13,47 +13,28 @@ export default function Rooms() {
   const [sort, setSort] = useState<SortKey>('name-asc');
   const nameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (moveId) setCurrentMove(moveId);
-  }, [moveId]);
-
-  useEffect(() => {
-    (async () => {
-      if (!moveId) return;
-      setRooms(await listRooms(moveId));
-    })();
-  }, [moveId]);
+  useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
+  useEffect(() => { (async () => { if (!moveId) return; setRooms(await listRooms(moveId)); })(); }, [moveId]);
 
   const sorted = useMemo(() => {
     const list = [...rooms];
     switch (sort) {
-      case 'name-asc':
-        return list.sort((a, b) => a.name.localeCompare(b.name));
-      case 'name-desc':
-        return list.sort((a, b) => b.name.localeCompare(a.name));
-      case 'updated-desc':
-        return list.sort((a, b) => b.updatedAt - a.updatedAt);
+      case 'name-asc':  return list.sort((a,b)=>a.name.localeCompare(b.name));
+      case 'name-desc': return list.sort((a,b)=>b.name.localeCompare(a.name));
+      case 'updated-desc': return list.sort((a,b)=>b.updatedAt-a.updatedAt);
     }
   }, [rooms, sort]);
 
   async function addRoom() {
-    const name = nameRef.current!.value.trim();
-    if (!name) return;
+    const name = nameRef.current!.value.trim(); if (!name) return;
     const r = await createRoom(moveId!, name);
     nameRef.current!.value = '';
     setRooms(await listRooms(moveId!));
-    // Go straight to Boxes filtered to the new room
     nav(`/moves/${moveId}/boxes?roomId=${r.id}`);
   }
 
   async function addBoxInRoom(roomId: string) {
-    if (!moveId) return;
-    const res = await createBox(moveId, roomId);
-    if ((res as any)?.error === 'DUPLICATE_NUMBER') {
-      alert('Box number conflict');
-      return;
-    }
-    // After creating, show Boxes filtered to that room
+    await createBox(moveId!, roomId);
     nav(`/moves/${moveId}/boxes?roomId=${roomId}`);
   }
 
@@ -74,7 +55,7 @@ export default function Rooms() {
         <h1 className="h1">Rooms</h1>
         <div className="flex items-center gap-3">
           <label className="text-sm text-neutral-600">Sort:</label>
-          <select className="select" value={sort} onChange={(e) => setSort(e.target.value as SortKey)}>
+          <select className="select" value={sort} onChange={(e)=>setSort(e.target.value as SortKey)}>
             <option value="name-asc">Name A–Z</option>
             <option value="name-desc">Name Z–A</option>
             <option value="updated-desc">Most Recent</option>
@@ -83,16 +64,9 @@ export default function Rooms() {
             ref={nameRef}
             className="input"
             placeholder="Add a room (e.g., Kitchen)"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                addRoom();
-              }
-            }}
+            onKeyDown={(e)=>{ if(e.key==='Enter'){ e.preventDefault(); addRoom(); } }}
           />
-          <button className="btn btn-primary" onClick={addRoom}>
-            Add
-          </button>
+          <button className="btn btn-primary" onClick={addRoom}>Add</button>
         </div>
       </div>
 
@@ -100,17 +74,11 @@ export default function Rooms() {
         {sorted.map((r) => (
           <div key={r.id} className="card p-4">
             <div className="flex items-center justify-between gap-3">
-              <InlineEditable value={r.name} onSave={(v) => rename(r.id, v)} />
+              <InlineEditable value={r.name} onSave={(v)=>rename(r.id, v)} />
               <div className="flex gap-2">
-                <button className="btn btn-ghost" onClick={() => addBoxInRoom(r.id)}>
-                  Add Box
-                </button>
-                <Link className="btn btn-ghost" to={`/moves/${moveId}/boxes?roomId=${r.id}`}>
-                  Open
-                </Link>
-                <button className="btn btn-ghost text-red-600" onClick={() => remove(r.id)}>
-                  Delete
-                </button>
+                <button className="btn btn-ghost" onClick={()=>addBoxInRoom(r.id)}>Add Box</button>
+                <Link className="btn btn-ghost" to={`/moves/${moveId}/boxes?roomId=${r.id}`}>Open</Link>
+                <button className="btn btn-ghost text-red-600" onClick={()=>remove(r.id)}>Delete</button>
               </div>
             </div>
             <RoomMeta moveId={moveId!} roomId={r.id} />
@@ -126,13 +94,8 @@ export default function Rooms() {
   );
 }
 
-function RoomMeta({ moveId, roomId }: { moveId: string; roomId: string }) {
-  const [count, setCount] = useState(0);
-  useEffect(() => {
-    (async () => {
-      const list = await listBoxes(moveId);
-      setCount(list.filter((b) => b.roomId === roomId).length);
-    })();
-  }, [moveId, roomId]);
+function RoomMeta({ moveId, roomId }:{ moveId:string; roomId:string }){
+  const [count,setCount] = useState(0);
+  useEffect(()=>{ (async()=>{ const list = await listBoxes(moveId); setCount(list.filter(b=>b.roomId===roomId).length); })(); }, [moveId,roomId]);
   return <div className="text-sm text-neutral-600 mt-2">Boxes: {count}</div>;
 }
