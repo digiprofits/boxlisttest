@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { createBox, createRoom, deleteRoom, listBoxes, listRooms, updateRoom, useUI } from '@/store';
+import { createRoom, deleteRoom, listBoxes, listRooms, updateRoom, useUI } from '@/store';
 import InlineEditable from '@/components/InlineEditable';
 
 type SortKey = 'name-asc' | 'name-desc' | 'updated-desc';
@@ -11,11 +11,10 @@ export default function Rooms() {
   const { setCurrentMove } = useUI();
   const [rooms, setRooms] = useState<any[]>([]);
   const [sort, setSort] = useState<SortKey>('name-asc');
-  const [addBoxRoomId, setAddBoxRoomId] = useState<string>('');
   const nameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
-  useEffect(() => { (async () => { if (!moveId) return; const rms = await listRooms(moveId); setRooms(rms); setAddBoxRoomId(rms[0]?.id || ''); })(); }, [moveId]);
+  useEffect(() => { (async () => { if (!moveId) return; setRooms(await listRooms(moveId)); })(); }, [moveId]);
 
   const sorted = useMemo(() => {
     const list = [...rooms];
@@ -30,21 +29,8 @@ export default function Rooms() {
     const name = nameRef.current!.value.trim(); if (!name) return;
     const r = await createRoom(moveId!, name);
     nameRef.current!.value = '';
-    const rms = await listRooms(moveId!);
-    setRooms(rms);
-    setAddBoxRoomId(rms[0]?.id || r.id);
+    setRooms(await listRooms(moveId!));
     nav(`/moves/${moveId}/boxes?roomId=${r.id}`);
-  }
-
-  async function addBoxToSelectedRoom() {
-    if (!addBoxRoomId) { alert('Choose a room first.'); return; }
-    await createBox(moveId!, addBoxRoomId);
-    nav(`/moves/${moveId}/boxes?roomId=${addBoxRoomId}`);
-  }
-
-  async function addBoxInRoom(roomId: string) {
-    await createBox(moveId!, roomId);
-    nav(`/moves/${moveId}/boxes?roomId=${roomId}`);
   }
 
   async function rename(id: string, name: string) {
@@ -69,23 +55,21 @@ export default function Rooms() {
             <option value="name-desc">Name Z–A</option>
             <option value="updated-desc">Most Recent</option>
           </select>
+        </div>
+      </div>
+
+      {/* Add Room — clear and full-width under Sort */}
+      <div className="card p-4 flex flex-col sm:flex-row gap-2 sm:items-center">
+        <label className="text-sm text-neutral-700 shrink-0">Add a room:</label>
+        <div className="flex gap-2 w-full">
           <input
             ref={nameRef}
-            className="input"
-            placeholder="Add a room (e.g., Kitchen)"
+            className="input flex-1"
+            placeholder="e.g., Kitchen, Master Bedroom, Living"
             onKeyDown={(e)=>{ if(e.key==='Enter'){ e.preventDefault(); addRoom(); } }}
           />
           <button className="btn btn-primary" onClick={addRoom}>Add</button>
         </div>
-      </div>
-
-      {/* New: obvious Add Box control */}
-      <div className="card p-4 flex flex-wrap items-center gap-3">
-        <div className="text-sm text-neutral-700">Add box to room:</div>
-        <select className="select" value={addBoxRoomId} onChange={(e)=>setAddBoxRoomId(e.target.value)}>
-          {rooms.map((r:any)=>(<option key={r.id} value={r.id}>{r.name}</option>))}
-        </select>
-        <button className="btn btn-primary" onClick={addBoxToSelectedRoom}>Add Box</button>
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -94,7 +78,6 @@ export default function Rooms() {
             <div className="flex items-center justify-between gap-3">
               <InlineEditable value={r.name} onSave={(v)=>rename(r.id, v)} />
               <div className="flex gap-2">
-                <button className="btn btn-ghost" onClick={()=>addBoxInRoom(r.id)}>Add Box</button>
                 <Link className="btn btn-ghost" to={`/moves/${moveId}/boxes?roomId=${r.id}`}>Open</Link>
                 <button className="btn btn-ghost text-red-600" onClick={()=>remove(r.id)}>Delete</button>
               </div>
