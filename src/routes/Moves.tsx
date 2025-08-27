@@ -48,22 +48,17 @@ export default function Moves() {
         <h1 className="h1">Welcome to BoxLister</h1>
         <div className="card p-6">
           <ol className="list-decimal pl-5 space-y-3">
-            <li>
-              Click <span className="font-semibold">New Move</span>
-            </li>
-            <li>
-              Add boxes (set status, add images)
-            </li>
-            <li>
-              Add items to each box (<em>Enter</em> adds quickly)
-            </li>
+            <li>Click <span className="font-semibold">New Move</span></li>
+            <li>Add <span className="font-semibold">Rooms</span> (Kitchen, Bedroom…)</li>
+            <li>Add <span className="font-semibold">Boxes</span> to rooms</li>
+            <li>Add <span className="font-semibold">Items</span> (press <em>Enter</em> to add quickly)</li>
             <li>Print labels with QR codes</li>
           </ol>
-          <div className="mt-6">
+          <div className="mt-6 space-y-2">
             <input
               ref={nameRef}
-              className="input mr-2"
-              placeholder="Move name"
+              className="input w-full"
+              placeholder="Move name (e.g., Sydney Move, Office Relocation, Storage 2025)"
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
@@ -71,9 +66,7 @@ export default function Moves() {
                 }
               }}
             />
-            <button className="btn btn-primary" onClick={addMove}>
-              New Move
-            </button>
+            <button className="btn btn-primary" onClick={addMove}>New Move</button>
           </div>
         </div>
       </div>
@@ -96,9 +89,7 @@ export default function Moves() {
               }
             }}
           />
-          <button className="btn btn-primary" onClick={addMove}>
-            New Move
-          </button>
+          <button className="btn btn-primary" onClick={addMove}>New Move</button>
         </div>
       </div>
 
@@ -108,17 +99,11 @@ export default function Moves() {
             <div className="flex items-center justify-between gap-3">
               <div className="flex-1 min-w-0">
                 <InlineEditable value={m.name} onSave={(v) => renameMove(m.id, v)} />
-                <div className="text-sm text-neutral-600">
-                  Last edited {new Date(m.updatedAt).toLocaleString()}
-                </div>
+                <div className="text-sm text-neutral-600">Last edited {new Date(m.updatedAt).toLocaleString()}</div>
               </div>
               <div className="flex gap-2">
-                <Link className="btn btn-ghost" to={`/moves/${m.id}/rooms`}>
-                  Open
-                </Link>
-                <button className="btn btn-ghost text-red-600" onClick={() => removeMove(m.id)}>
-                  Delete
-                </button>
+                <Link className="btn btn-ghost" to={`/moves/${m.id}/rooms`}>Open</Link>
+                <button className="btn btn-ghost text-red-600" onClick={() => removeMove(m.id)}>Delete</button>
               </div>
             </div>
           </div>
