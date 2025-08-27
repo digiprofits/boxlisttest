@@ -38,6 +38,7 @@ export default function BoxDetail() {
   const [rooms, setRooms] = useState<{ id: string; name: string }[]>([]);
   const [adding, setAdding] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [imgTick, setImgTick] = useState(0); // trigger ImageGrid refresh
   const itemRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
@@ -68,7 +69,7 @@ export default function BoxDetail() {
   async function saveAndBack() {
     if (!box) return;
     setSaving(true);
-    // no box-level notes in Phase 3B
+    // (no box-level notes to save)
     setSaving(false);
     history.back();
   }
@@ -117,9 +118,17 @@ export default function BoxDetail() {
       <section className="card p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">Images</h2>
-          <ImageUploader label="Add Image(s)" multiple preferCamera onFiles={async (files) => { await addImagesToBox(box.id, files); await refresh(); }} />
+          <ImageUploader
+            label="Add Image(s)"
+            multiple
+            preferCamera
+            onFiles={async (files) => {
+              await addImagesToBox(box.id, files);
+              setImgTick((v) => v + 1); // force ImageGrid to reload immediately
+            }}
+          />
         </div>
-        <ImageGrid parentType="box" parentId={box.id} />
+        <ImageGrid parentType="box" parentId={box.id} refreshToken={imgTick} />
       </section>
 
       {/* Items */}
@@ -143,7 +152,11 @@ export default function BoxDetail() {
               item={it}
               onChange={async (patch) => { await updateItem(it.id, patch); await refresh(); }}
               onDelete={async () => { await removeItem(it.id); await refresh(); }}
-              onAddImages={async (files) => { await addImagesToItem(it.id, files); await refresh(); }}
+              onAddImages={async (files) => {
+                await addImagesToItem(it.id, files);
+                setImgTick((v) => v + 1); // also refresh item grids
+              }}
+              imgTick={imgTick}
             />
           ))}
           {items.length === 0 && <div className="text-neutral-500">No items yet. Add your first item above.</div>}
@@ -162,12 +175,13 @@ export default function BoxDetail() {
 
 /* ---------- inline item edit ---------- */
 function EditableItem({
-  item, onChange, onDelete, onAddImages,
+  item, onChange, onDelete, onAddImages, imgTick,
 }: {
   item: Item;
   onChange: (patch: Partial<Item>) => Promise<void>;
   onDelete: () => Promise<void>;
   onAddImages: (files: File[]) => Promise<void>;
+  imgTick: number; // pass through to child grid
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(item.name);
@@ -203,7 +217,7 @@ function EditableItem({
               <div className="font-medium">Images</div>
               <ImageUploader label="Add Image(s)" multiple preferCamera onFiles={onAddImages} />
             </div>
-            <ImageGrid parentType="item" parentId={item.id} />
+            <ImageGrid parentType="item" parentId={item.id} refreshToken={imgTick} />
           </div>
 
           <div className="pt-1">
