@@ -10,9 +10,7 @@ export default function Search() {
   const [roomsMap, setRoomsMap] = useState<Record<string, any>>({});
   const [q, setQ] = useState('');
 
-  useEffect(() => {
-    if (moveId) setCurrentMove(moveId);
-  }, [moveId]);
+  useEffect(() => { if (moveId) setCurrentMove(moveId); }, [moveId]);
 
   useEffect(() => {
     (async () => {
@@ -29,14 +27,8 @@ export default function Search() {
   }, [moveId]);
 
   const qb = q.toLowerCase();
-  const b = useMemo(
-    () => boxes.filter((x: any) => (x.name || '').toLowerCase().includes(qb)),
-    [boxes, qb]
-  );
-  const i = useMemo(
-    () => items.filter((x: any) => (x.name || '').toLowerCase().includes(qb)),
-    [items, qb]
-  );
+  const b = useMemo(() => boxes.filter((x: any) => (x.name || '').toLowerCase().includes(qb)), [boxes, qb]);
+  const i = useMemo(() => items.filter((x: any) => (x.name || '').toLowerCase().includes(qb)), [items, qb]);
 
   return (
     <div className="space-y-6">
@@ -76,8 +68,9 @@ export default function Search() {
           <h2 className="font-semibold mb-2">Items</h2>
           <div className="space-y-2">
             {i.map((x: any) => {
-              const box = boxes.find((b: any) => b.id === x.boxId);
+              const box = boxes.find((bb: any) => bb.id === x.boxId);
               const roomName = box ? roomsMap[box.roomId]?.name : '';
+              const boxNum = box?.number ? `#${box.number}` : '';
               return (
                 <Link
                   key={x.id}
@@ -86,6 +79,7 @@ export default function Search() {
                 >
                   <div className="font-medium">{x.name}</div>
                   <div className="text-sm text-neutral-600">
+                    {boxNum && <>Box {boxNum}&nbsp;&nbsp;•&nbsp;&nbsp;</>}
                     {roomName ? `Room: ${roomName}` : ''}
                   </div>
                 </Link>
