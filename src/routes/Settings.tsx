@@ -4,6 +4,9 @@ import { exportJSON, importJSON, useUI } from '@/store';
 import { itemsToCSV } from '@/utils/csv';
 import { download } from '@/utils/download';
 
+const BUILD_TAG = 'Stage 3B snapshot (27-Aug-2025 16:04)';
+const BUILD_SHA256 = '57d1f856f08b3bc8be8001c0d02436c6a75d8a16494a914a2cec817090b1c215';
+
 export default function Settings() {
   const { moveId } = useParams();
   const { setCurrentMove } = useUI();
@@ -38,6 +41,29 @@ export default function Settings() {
   return (
     <div className="space-y-8">
       <h1 className="h1">Settings &amp; Data</h1>
+
+      {/* Version */}
+      <section className="card p-5 space-y-2">
+        <h2 className="font-semibold">Version</h2>
+        <div className="text-sm">
+          <div><span className="text-neutral-600">Build:</span> {BUILD_TAG}</div>
+          <div className="break-all">
+            <span className="text-neutral-600">SHA-256:</span> {BUILD_SHA256}
+          </div>
+        </div>
+        <div>
+          <button
+            className="btn btn-ghost"
+            onClick={() => {
+              const txt = `BoxLister ${BUILD_TAG}\nSHA-256: ${BUILD_SHA256}`;
+              navigator.clipboard.writeText(txt);
+              alert('Build info copied');
+            }}
+          >
+            Copy build info
+          </button>
+        </div>
+      </section>
 
       <section className="card p-5 space-y-3">
         <h2 className="font-semibold">Install &amp; UX</h2>
@@ -76,7 +102,7 @@ export default function Settings() {
           <button className="btn btn-ghost" onClick={handleExportCSV}>Export CSV (Inventory)</button>
           <a className="btn btn-ghost" href={`/moves/${moveId}/labels`}>Printable Labels</a>
         </div>
-        <p className="text-sm text-neutral-600">JSON includes all moves, rooms, boxes, and items. CSV is a flat inventory list.</p>
+        <p className="text-sm text-neutral-600">JSON includes all moves, rooms, boxes, items, and images. CSV is a flat inventory list.</p>
       </section>
 
       <section className="card p-5 space-y-2">
